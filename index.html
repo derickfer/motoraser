@@ -1,12 +1,14 @@
 <!doctype html>
+
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>MOTORASER</title>
 
-  <!-- ✅ CSS correto do seu repo + anti-cache -->
-  <link rel="stylesheet" href="./estilos.css?v=4" />
+  <!-- CSS CORRETO -->
+
+  <link rel="stylesheet" href="./estilos.css?v=5" />
 </head>
 
 <body>
@@ -20,129 +22,82 @@
         </div>
       </div>
 
-      <div class="topActions">
-        <button id="btnLogin" class="btn primary" type="button">Entrar com Google</button>
-        <button id="btnLogout" class="btn ghost hidden" type="button">Sair</button>
-        <button id="btnLocate" class="btn ghost" type="button">📍 Minha localização</button>
-      </div>
-    </header>
-
-    <main class="content">
-      <section class="card hero">
-        <div class="heroLeft">
-          <h1>Bem-vindo(a) 👋</h1>
-          <p class="muted">
-            Perfil do usuário + localização + mapa real + botão de “Aposta Corrida”.
-          </p>
-
-          <div class="row">
-            <div class="pill" id="locStatus">Localização: não carregada</div>
-            <div class="pill" id="userStatus">Usuário: visitante</div>
-          </div>
-
-          <div id="userCard" class="userCard hidden">
-            <img id="userPhoto" class="userPhoto" alt="Foto do usuário" />
-            <div class="userInfo">
-              <div id="userName" class="userName">—</div>
-              <div id="userEmail" class="muted userEmail">—</div>
-            </div>
-          </div>
-
-          <div class="ctaRow">
-            <button id="btnAposta" class="btn primary" type="button">
-              🚗 APOSTA CORRIDA
-            </button>
-            <button id="btnProfile" class="btn" type="button">
-              👤 Perfil
-            </button>
-          </div>
-
-          <p class="tiny muted">
-            *Modo simulador (sem dinheiro real).
-          </p>
-        </div>
-
-        <div class="heroRight">
-          <div class="mapBox">
-            <div class="mapTop">
-              <div class="mapTitle">Sua área</div>
-              <div class="mapInfo" id="mapInfo">Toque em “Minha localização”.</div>
-            </div>
-            <div id="map"></div>
-          </div>
-        </div>
-      </section>
-
-      <section class="grid">
-        <section class="card">
-          <h2>Corridas (simuladas)</h2>
-          <p class="muted">Uma lista “estilo 99” pra você evoluir depois.</p>
-          <div id="rides" class="rides"></div>
-        </section>
-
-        <section class="card">
-          <h2>Seu perfil</h2>
-          <p class="muted">Nome + telefone (salva no navegador).</p>
-
-          <form id="profileForm" class="form">
-            <label>
-              Nome
-              <input id="name" type="text" placeholder="Ex: Felipe" autocomplete="name" />
-            </label>
-
-            <label>
-              Telefone
-              <input id="phone" type="tel" placeholder="Ex: (93) 9xxxx-xxxx" autocomplete="tel" />
-            </label>
-
-            <div class="formRow">
-              <button class="btn primary" type="submit">Salvar</button>
-              <button id="btnClear" class="btn ghost" type="button">Limpar</button>
-            </div>
-          </form>
-
-          <div class="note">
-            <div class="noteTitle">Dica</div>
-            <div class="muted">
-              Depois você pode ligar login real (Firebase) e backend.
-            </div>
-          </div>
-        </section>
-      </section>
-    </main>
-
-    <footer class="footer muted">
-      MOTORASER © <span id="year"></span> • Simulador
-    </footer>
+```
+  <div class="topActions">
+    <button id="btnLogin" class="btn primary">Entrar com Google</button>
+    <button id="btnLogout" class="btn ghost hidden">Sair</button>
+    <button id="btnLocate" class="btn ghost">📍 Minha localização</button>
   </div>
+</header>
 
-  <!-- Modal -->
-  <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
-    <div class="modalCard">
-      <div class="modalHeader">
-        <div class="modalTitle" id="modalTitle">Aposta Corrida</div>
-        <button id="modalClose" class="btn ghost" type="button">✖</button>
+<main class="content">
+  <section class="card hero">
+    <div class="heroLeft">
+      <h1>Bem-vindo(a) 👋</h1>
+
+      <div class="row">
+        <div class="pill" id="locStatus">Localização: não carregada</div>
+        <div class="pill" id="userStatus">Usuário: visitante</div>
       </div>
-      <div id="modalBody" class="modalBody"></div>
-      <div class="modalActions">
-        <button id="modalOk" class="btn primary" type="button">OK</button>
+
+      <div id="userCard" class="userCard hidden">
+        <img id="userPhoto" class="userPhoto" />
+        <div>
+          <div id="userName"></div>
+          <div id="userEmail" class="muted"></div>
+        </div>
+      </div>
+
+      <div class="ctaRow">
+        <button id="btnAposta" class="btn primary">🚗 APOSTA CORRIDA</button>
+        <button id="btnProfile" class="btn">👤 Perfil</button>
       </div>
     </div>
+
+    <div class="heroRight">
+      <div class="mapBox">
+        <div class="mapTop">
+          <div class="mapTitle">Sua área</div>
+          <div class="mapInfo" id="mapInfo">Toque em “Minha localização”.</div>
+        </div>
+        <div id="map"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="grid">
+    <section class="card">
+      <h2>Corridas (simuladas)</h2>
+      <div id="rides"></div>
+    </section>
+
+    <section class="card">
+      <h2>Seu perfil</h2>
+      <form id="profileForm">
+        <input id="name" placeholder="Nome" />
+        <input id="phone" placeholder="Telefone" />
+        <button class="btn primary">Salvar</button>
+      </form>
+    </section>
+  </section>
+</main>
+```
+
   </div>
 
-  <!-- FIREBASE (compat) -->
+  <!-- Firebase -->
+
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 
-  <!-- ✅ app.js com anti-cache -->
-  <script src="./app.js?v=4"></script>
+  <script src="./app.js?v=5"></script>
 
-  <!-- Google Maps -->
-  <script
-    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDGazx9bgxzM7oMboUSrEIVRDLepF9zB90&callback=initMap"
-    async
-    defer
-  ></script>
+  <!-- MAPS -->
+
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDGazx9bgxzM7oMboUSrEIVRDLepF9zB90&callback=initMap" async defer></script>
+
 </body>
 </html>
