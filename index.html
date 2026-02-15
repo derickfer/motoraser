@@ -18,9 +18,11 @@
         </div>
       </div>
 
-      <button id="btnLocate" class="btn ghost" type="button">
-        📍 Minha localização
-      </button>
+      <div class="topActions">
+        <button id="btnLogin" class="btn primary" type="button">Entrar com Google</button>
+        <button id="btnLogout" class="btn ghost hidden" type="button">Sair</button>
+        <button id="btnLocate" class="btn ghost" type="button">📍 Minha localização</button>
+      </div>
     </header>
 
     <main class="content">
@@ -34,6 +36,14 @@
           <div class="row">
             <div class="pill" id="locStatus">Localização: não carregada</div>
             <div class="pill" id="userStatus">Usuário: visitante</div>
+          </div>
+
+          <div id="userCard" class="userCard hidden">
+            <img id="userPhoto" class="userPhoto" alt="Foto do usuário" />
+            <div class="userInfo">
+              <div id="userName" class="userName">—</div>
+              <div id="userEmail" class="muted userEmail">—</div>
+            </div>
           </div>
 
           <div class="ctaRow">
@@ -75,12 +85,12 @@
           <form id="profileForm" class="form">
             <label>
               Nome
-              <input id="name" type="text" placeholder="Ex: Felipe" />
+              <input id="name" type="text" placeholder="Ex: Felipe" autocomplete="name" />
             </label>
 
             <label>
               Telefone
-              <input id="phone" type="tel" placeholder="Ex: (93) 9xxxx-xxxx" />
+              <input id="phone" type="tel" placeholder="Ex: (93) 9xxxx-xxxx" autocomplete="tel" />
             </label>
 
             <div class="formRow">
@@ -88,23 +98,49 @@
               <button id="btnClear" class="btn ghost" type="button">Limpar</button>
             </div>
           </form>
+
+          <div class="note">
+            <div class="noteTitle">Dica</div>
+            <div class="muted">
+              Depois você pode ligar login real (Firebase) e backend.
+            </div>
+          </div>
         </section>
       </section>
     </main>
 
     <footer class="footer muted">
-      MOTORASER © <span id="year"></span>
+      MOTORASER © <span id="year"></span> • Simulador
     </footer>
   </div>
 
+  <!-- Modal -->
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modalCard">
+      <div class="modalHeader">
+        <div class="modalTitle" id="modalTitle">Aposta Corrida</div>
+        <button id="modalClose" class="btn ghost" type="button">✖</button>
+      </div>
+      <div id="modalBody" class="modalBody"></div>
+      <div class="modalActions">
+        <button id="modalOk" class="btn primary" type="button">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- FIREBASE (compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <!-- ✅ NOVO: FIRESTORE -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
   <script src="./app.js"></script>
 
-  <!-- GOOGLE MAPS COM SUA CHAVE -->
+  <!-- Google Maps -->
   <script
     src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDGazx9bgxzM7oMboUSrEIVRDLepF9zB90&callback=initMap"
     async
     defer
   ></script>
-
 </body>
 </html>

@@ -1,5 +1,23 @@
 const $ = (sel) => document.querySelector(sel);
 
+/* ================== FIREBASE (LOGIN GOOGLE + FIRESTORE) ================== */
+const firebaseConfig = {
+  apiKey: "AIzaSyBI_ZNuKytSxM_XzWv2SE9xGgF_1ea3qgs",
+  authDomain: "motoraser-4e869.firebaseapp.com",
+  projectId: "motoraser-4e869",
+  storageBucket: "motoraser-4e869.firebasestorage.app",
+  messagingSenderId: "662628905736",
+  appId: "1:662628905736:web:fa3df9dec147efd85672bd",
+  measurementId: "G-7E6NDFMM91"
+};
+
+firebase.initializeApp(firebaseConfig);
+
+const auth = firebase.auth();
+const provider = new firebase.auth.GoogleAuthProvider();
+const db = firebase.firestore();
+
+/* ================== ESTADO ================== */
 const STORAGE_KEY = "motoraser_profile_v1";
 
 const state = {
@@ -13,6 +31,7 @@ let userMarker;
 // Fallback: Altamira-PA
 const ALTAMIRA = { lat: -3.2042, lng: -52.2057 };
 
+/* ================== MAPA ================== */
 window.initMap = function initMap() {
   map = new google.maps.Map(document.getElementById("map"), {
     center: ALTAMIRA,
@@ -28,6 +47,7 @@ window.initMap = function initMap() {
   });
 };
 
+/* ================== PERFIL LOCAL ================== */
 function loadProfile() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -66,6 +86,7 @@ function renderLocation() {
   $("#mapInfo").textContent = `Lat: ${lat.toFixed(6)} • Lng: ${lng.toFixed(6)}`;
 }
 
+/* ================== MODAL ================== */
 function openModal(title, html) {
   $("#modalTitle").textContent = title;
   $("#modalBody").innerHTML = html;
@@ -75,6 +96,7 @@ function closeModal() {
   $("#modal").classList.add("hidden");
 }
 
+/* ================== GEOLOCALIZAÇÃO ================== */
 function getLocation() {
   if (!navigator.geolocation) {
     openModal("Localização", "Seu navegador não suporta geolocalização.");
@@ -119,6 +141,7 @@ function getLocation() {
   );
 }
 
+/* ================== CORRIDAS (MOCK) ================== */
 function ridesMock() {
   return [
     { from: "Centro", to: "Bairro A", eta: "6 min", demand: "Alta" },
@@ -164,8 +187,9 @@ function renderRides() {
   });
 }
 
+/* ================== APOSTA (SIMULADOR) ================== */
 function handleAposta() {
-  const name = state.profile.name?.trim() || "Visitante";
+  const name = $("#userName")?.textContent?.trim() || state.profile.name?.trim() || "Visitante";
   const loc = state.location
     ? `Sua localização está ativa (±${Math.round(state.location.accuracy)}m).`
     : "Sua localização ainda não foi ativada.";
@@ -181,6 +205,67 @@ function handleAposta() {
   `);
 }
 
+/* ================== LOGIN + SALVAR USUÁRIO NO FIRESTORE ================== */
+function setupAuth() {
+  $("#btnLogin").addEventListener("click", async () => {
+    try {
+      await auth.signInWithPopup(provider);
+    } catch (e) {
+      openModal("Login", "Não foi possível abrir o login. Verifique domínios autorizados no Firebase.");
+    }
+  });
+
+  $("#btnLogout").addEventListener("click", async () => {
+    await auth.signOut();
+  });
+
+  auth.onAuthStateChanged(async (user) => {
+    const isLogged = !!user;
+
+    // Botões
+    $("#btnLogin").classList.toggle("hidden", isLogged);
+    $("#btnLogout").classList.toggle("hidden", !isLogged);
+
+    // Card do usuário
+    $("#userCard").classList.toggle("hidden", !isLogged);
+
+    if (!isLogged) {
+      // mantém o perfil local funcionando
+      renderProfile();
+      return;
+    }
+
+    // UI
+    $("#userStatus").textContent = `Logado: ${user.displayName || "Usuário"}`;
+    $("#userName").textContent = user.displayName || "Usuário";
+    $("#userEmail").textContent = user.email || "";
+
+    if (user.photoURL) {
+      $("#userPhoto").src = user.photoURL;
+      $("#userPhoto").classList.remove("hidden");
+    } else {
+      $("#userPhoto").classList.add("hidden");
+    }
+
+    // ✅ SALVAR/ATUALIZAR USUÁRIO NO FIRESTORE
+    try {
+      await db.collection("users").doc(user.uid).set({
+        uid: user.uid,
+        name: user.displayName || "",
+        email: user.email || "",
+        photo: user.photoURL || "",
+        provider: "google",
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    } catch (e) {
+      // se regra bloquear, a gente ajusta as rules depois
+      console.error("Erro ao salvar usuário no Firestore:", e);
+    }
+  });
+}
+
+/* ================== INIT ================== */
 function init() {
   $("#year").textContent = new Date().getFullYear();
 
@@ -188,6 +273,7 @@ function init() {
   renderProfile();
   renderLocation();
   renderRides();
+  setupAuth();
 
   $("#btnLocate").addEventListener("click", getLocation);
 
