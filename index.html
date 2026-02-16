@@ -4,8 +4,17 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>MOTORASER</title>
-  <link rel="stylesheet" href="./styles.css?v=3" />
+  <link rel="stylesheet" href="./styles.css?v=1" />
+
+  <!-- Leaflet (OpenStreetMap) -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
 </head>
+
 <body>
   <div class="app">
     <header class="topbar">
@@ -13,61 +22,38 @@
         <div class="logo">M</div>
         <div class="brandText">
           <div class="brandName">MOTORASER</div>
-          <div class="brandTag">Logística de corridas • online</div>
+          <div class="brandTag">Aposta Corrida (simulador) • 1x1</div>
         </div>
       </div>
 
       <div class="topActions">
+        <button id="btnLocate" class="btn ghost" type="button">📍 Minha localização</button>
         <button id="btnLogin" class="btn primary" type="button">Entrar com Google</button>
         <button id="btnLogout" class="btn ghost hidden" type="button">Sair</button>
-        <button id="btnLocate" class="btn ghost" type="button">📍 Minha localização</button>
       </div>
     </header>
 
     <main class="content">
-      <!-- HERO -->
       <section class="card hero">
         <div class="heroLeft">
-          <h1>MOTORASER Online 🚗</h1>
-          <p class="muted">Crie corridas reais no Firebase, motorista aceita e depois finaliza. Tudo fica no histórico.</p>
+          <h1>Aposta Corrida 1x1 🏁</h1>
+          <p class="muted">
+            Um piloto cria o desafio, outro aceita. Mesmo destino pros dois.
+            Quem chegar primeiro ganha (pontos).
+          </p>
 
           <div class="row">
             <div class="pill" id="locStatus">Localização: não carregada</div>
             <div class="pill" id="userStatus">Usuário: visitante</div>
-            <div class="pill" id="roleStatus">Modo: não definido</div>
-          </div>
-
-          <div id="userCard" class="userCard hidden">
-            <img id="userPhoto" class="userPhoto" alt="Foto do usuário" />
-            <div class="userInfo">
-              <div id="userName" class="userName">—</div>
-              <div id="userEmail" class="muted userEmail">—</div>
-            </div>
-          </div>
-
-          <!-- ROLE -->
-          <div class="roleBox">
-            <div class="roleTitle">Escolha seu modo</div>
-            <div class="roleRow">
-              <button id="btnRolePassenger" class="btn" type="button">🧍 Passageiro</button>
-              <button id="btnRoleDriver" class="btn" type="button">🚘 Motorista</button>
-            </div>
-            <div class="muted tiny">*Isso muda o que você vê (criar corrida vs aceitar/pegar corridas).</div>
-          </div>
-
-          <!-- CRIAR CORRIDA (PASSAGEIRO) -->
-          <div id="createRideBox" class="createRide hidden">
-            <div class="createTitle">Pedir corrida</div>
-            <div class="createRow">
-              <input id="destInput" class="input" type="text" placeholder="Destino (ex: Hospital, Centro...)" />
-              <button id="btnCreateRide" class="btn primary" type="button">➕ Criar corrida</button>
-            </div>
-            <div class="muted tiny">*Origem pega pela sua localização atual.</div>
           </div>
 
           <div class="ctaRow">
-            <button id="btnAposta" class="btn" type="button">🎲 APOSTA CORRIDA (depois)</button>
-            <button id="btnProfile" class="btn ghost" type="button">👤 Perfil</button>
+            <button id="btnCreateChallenge" class="btn primary" type="button">➕ Criar desafio</button>
+            <button id="btnRefresh" class="btn" type="button">🔄 Atualizar</button>
+          </div>
+
+          <div class="tiny muted">
+            *Simulador: “aposta” = pontos. (Sem dinheiro real.)
           </div>
         </div>
 
@@ -82,36 +68,31 @@
         </div>
       </section>
 
-      <!-- GRID -->
       <section class="grid">
         <section class="card">
-          <div class="cardHead">
-            <div>
-              <h2>Corridas ao vivo</h2>
-              <p class="muted" id="ridesHint">Atualiza sozinho (tempo real).</p>
-            </div>
-            <div class="smallRow">
-              <span class="tag" id="liveCount">0 online</span>
-              <button id="btnRefreshRides" class="btn ghost" type="button">🔄 Forçar</button>
+          <div class="cardTop">
+            <h2>Desafios ao vivo</h2>
+            <div class="rowRight">
+              <span class="pill" id="liveCount">0 online</span>
             </div>
           </div>
-
-          <div class="rides" id="rides"></div>
+          <p class="muted">Abra um desafio, espere outro piloto aceitar e corram pro mesmo destino.</p>
+          <div id="challenges" class="rides"></div>
         </section>
 
         <section class="card">
-          <h2>Seu perfil</h2>
-          <p class="muted">Salva no Firebase no seu usuário.</p>
+          <h2>Meu perfil</h2>
+          <p class="muted">Nome + telefone (salva no navegador e no Firebase quando logado).</p>
 
           <form id="profileForm" class="form">
             <label>
               Nome
-              <input id="name" class="input" type="text" placeholder="Ex: Derick" autocomplete="name" />
+              <input id="name" type="text" placeholder="Ex: Derick" autocomplete="name" />
             </label>
 
             <label>
               Telefone
-              <input id="phone" class="input" type="tel" placeholder="Ex: (93) 9xxxx-xxxx" autocomplete="tel" />
+              <input id="phone" type="tel" placeholder="Ex: (93) 9xxxx-xxxx" autocomplete="tel" />
             </label>
 
             <div class="formRow">
@@ -121,30 +102,18 @@
           </form>
 
           <div class="note">
-            <div class="noteTitle">Como funciona</div>
+            <div class="noteTitle">Como vence?</div>
             <div class="muted">
-              Passageiro cria → Motorista aceita → Qualquer um finaliza → Vai pro histórico.
+              Quando a corrida começar, você aperta <b>CHEGUEI</b> ao estar perto do destino.
+              Quem registrar primeiro ganha.
             </div>
           </div>
-        </section>
-
-        <section class="card full">
-          <div class="cardHead">
-            <div>
-              <h2>Histórico</h2>
-              <p class="muted">Corridas finalizadas (últimas 30).</p>
-            </div>
-            <div class="smallRow">
-              <button id="btnRefreshHistory" class="btn ghost" type="button">🔄 Atualizar</button>
-            </div>
-          </div>
-          <div class="rides" id="history"></div>
         </section>
       </section>
     </main>
 
     <footer class="footer muted">
-      MOTORASER © <span id="year"></span> • Online
+      MOTORASER © <span id="year"></span> • Aposta Corrida (simulador)
     </footer>
   </div>
 
@@ -162,17 +131,18 @@
     </div>
   </div>
 
-  <!-- Firebase compat -->
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <!-- Firebase (compat) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 
-  <script src="./app.js?v=3"></script>
-
-  <!-- Google Maps -->
+  <!-- Leaflet JS -->
   <script
-    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDGazx9bgxzM7oMboUSrEIVRDLepF9zB90&callback=initMap"
-    async defer
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
   ></script>
+
+  <script src="./app.js?v=1"></script>
 </body>
 </html>
