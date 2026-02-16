@@ -1,7 +1,10 @@
 const firebaseConfig = {
 apiKey: "AIzaSyBI_ZNuKytSxM_XzWv2SE9xGgF_1ea3qgs",
 authDomain: "motoraser-4e869.firebaseapp.com",
-projectId: "motoraser-4e869"
+projectId: "motoraser-4e869",
+storageBucket: "motoraser-4e869.appspot.com",
+messagingSenderId: "662628905736",
+appId: "1:662628905736:web:fa3df9dec147efd85672bd"
 };
 
 firebase.initializeApp(firebaseConfig);
@@ -24,7 +27,9 @@ auth.onAuthStateChanged(user => {
 if(user){
 btnLogin.classList.add("hidden");
 btnLogout.classList.remove("hidden");
+
 userStatus.innerText = "Usuário: " + user.displayName;
+
 db.collection("users").doc(user.uid).set({
 name:user.displayName,
 email:user.email
@@ -39,7 +44,15 @@ userStatus.innerText = "Usuário: visitante";
 function initMap(){
 navigator.geolocation.getCurrentPosition(pos=>{
 const loc={lat:pos.coords.latitude,lng:pos.coords.longitude};
-const map=new google.maps.Map(document.getElementById("map"),{zoom:14,center:loc});
-new google.maps.Marker({position:loc,map:map});
+
+const map=new google.maps.Map(document.getElementById("map"),{
+zoom:14,
+center:loc
+});
+
+new google.maps.Marker({
+position:loc,
+map:map
+});
 });
 }

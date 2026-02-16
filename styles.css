@@ -8,6 +8,7 @@ color:white;
 .topbar{
 display:flex;
 justify-content:space-between;
+align-items:center;
 padding:15px;
 background:#020617;
 }
@@ -43,6 +44,7 @@ padding:10px 15px;
 border:none;
 border-radius:8px;
 cursor:pointer;
+margin-right:10px;
 }
 
 .primary{
