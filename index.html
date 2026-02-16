@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>MOTORASER</title>
-  <link rel="stylesheet" href="./styles.css?v=1" />
+  <link rel="stylesheet" href="./styles.css?v=2" />
 </head>
 <body>
   <div class="app">
@@ -13,7 +13,7 @@
         <div class="logo">M</div>
         <div class="brandText">
           <div class="brandName">MOTORASER</div>
-          <div class="brandTag">Logística de corridas • simulador</div>
+          <div class="brandTag">Logística de corridas • online</div>
         </div>
       </div>
 
@@ -25,10 +25,11 @@
     </header>
 
     <main class="content">
+      <!-- HERO -->
       <section class="card hero">
         <div class="heroLeft">
-          <h1>Bem-vindo(a) 👋</h1>
-          <p class="muted">Perfil do usuário + localização + mapa real + botão de “Aposta Corrida”.</p>
+          <h1>MOTORASER Online 🚗</h1>
+          <p class="muted">Crie corridas reais no Firebase e deixe outras pessoas aceitarem ao vivo.</p>
 
           <div class="row">
             <div class="pill" id="locStatus">Localização: não carregada</div>
@@ -43,18 +44,26 @@
             </div>
           </div>
 
-          <div class="ctaRow">
-            <button id="btnAposta" class="btn primary" type="button">🚗 APOSTA CORRIDA</button>
-            <button id="btnProfile" class="btn" type="button">👤 Perfil</button>
+          <!-- CRIAR CORRIDA -->
+          <div class="createRide">
+            <div class="createTitle">Pedir corrida</div>
+            <div class="createRow">
+              <input id="destInput" class="input" type="text" placeholder="Destino (ex: Hospital, Centro...)" />
+              <button id="btnCreateRide" class="btn primary" type="button">➕ Criar corrida</button>
+            </div>
+            <div class="muted tiny">*Origem pega pela sua localização atual.</div>
           </div>
 
-          <p class="tiny muted">*Modo simulador (sem dinheiro real).</p>
+          <div class="ctaRow">
+            <button id="btnAposta" class="btn" type="button">🚗 APOSTA CORRIDA (depois)</button>
+            <button id="btnProfile" class="btn ghost" type="button">👤 Perfil</button>
+          </div>
         </div>
 
         <div class="heroRight">
           <div class="mapBox">
             <div class="mapTop">
-              <div class="mapTitle">Sua área</div>
+              <div class="mapTitle">Mapa</div>
               <div class="mapInfo" id="mapInfo">Toque em “Minha localização”.</div>
             </div>
             <div id="map"></div>
@@ -62,31 +71,36 @@
         </div>
       </section>
 
+      <!-- GRID -->
       <section class="grid">
         <section class="card">
           <div class="cardHead">
             <div>
-              <h2>Corridas (simuladas)</h2>
-              <p class="muted">Uma lista “estilo 99” pra você evoluir depois.</p>
+              <h2>Corridas ao vivo</h2>
+              <p class="muted">Atualiza sozinho (tempo real).</p>
             </div>
-            <button id="btnRefreshRides" class="btn ghost" type="button">🔄 Atualizar</button>
+            <div class="smallRow">
+              <span class="tag" id="liveCount">0 online</span>
+              <button id="btnRefreshRides" class="btn ghost" type="button">🔄 Forçar</button>
+            </div>
           </div>
-          <div id="rides" class="rides"></div>
+
+          <div class="rides" id="rides"></div>
         </section>
 
         <section class="card">
           <h2>Seu perfil</h2>
-          <p class="muted">Nome + telefone (salva no navegador) e vincula ao seu login.</p>
+          <p class="muted">Salva no Firebase no seu usuário.</p>
 
           <form id="profileForm" class="form">
             <label>
               Nome
-              <input id="name" type="text" placeholder="Ex: Felipe" autocomplete="name" />
+              <input id="name" class="input" type="text" placeholder="Ex: Derick" autocomplete="name" />
             </label>
 
             <label>
               Telefone
-              <input id="phone" type="tel" placeholder="Ex: (93) 9xxxx-xxxx" autocomplete="tel" />
+              <input id="phone" class="input" type="tel" placeholder="Ex: (93) 9xxxx-xxxx" autocomplete="tel" />
             </label>
 
             <div class="formRow">
@@ -96,15 +110,15 @@
           </form>
 
           <div class="note">
-            <div class="noteTitle">Dica</div>
-            <div class="muted">Depois a gente troca “simulador” por corridas reais no Firestore.</div>
+            <div class="noteTitle">Próximo</div>
+            <div class="muted">Depois: separar “motorista” e “passageiro” + chat.</div>
           </div>
         </section>
       </section>
     </main>
 
     <footer class="footer muted">
-      MOTORASER © <span id="year"></span> • Simulador
+      MOTORASER © <span id="year"></span> • Online
     </footer>
   </div>
 
@@ -112,7 +126,7 @@
   <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
     <div class="modalCard">
       <div class="modalHeader">
-        <div class="modalTitle" id="modalTitle">Aposta Corrida</div>
+        <div class="modalTitle" id="modalTitle">MOTORASER</div>
         <button id="modalClose" class="btn ghost" type="button">✖</button>
       </div>
       <div id="modalBody" class="modalBody"></div>
@@ -127,7 +141,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 
-  <script src="./app.js?v=1"></script>
+  <script src="./app.js?v=2"></script>
 
   <!-- Google Maps -->
   <script

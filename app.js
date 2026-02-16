@@ -14,7 +14,6 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
-// =================== HELPERS ===================
 const $ = (id) => document.getElementById(id);
 
 // =================== ELEMENTOS ===================
@@ -24,6 +23,9 @@ const btnLocate = $("btnLocate");
 const btnAposta = $("btnAposta");
 const btnProfile = $("btnProfile");
 const btnRefreshRides = $("btnRefreshRides");
+const btnCreateRide = $("btnCreateRide");
+
+const destInput = $("destInput");
 
 const userStatus = $("userStatus");
 const locStatus = $("locStatus");
@@ -35,6 +37,7 @@ const userName = $("userName");
 const userEmail = $("userEmail");
 
 const ridesEl = $("rides");
+const liveCount = $("liveCount");
 
 const profileForm = $("profileForm");
 const nameInput = $("name");
@@ -55,28 +58,16 @@ function openModal(title, html) {
   modalBody.innerHTML = html;
   modal.classList.remove("hidden");
 }
-function closeModal() {
-  modal.classList.add("hidden");
-}
+function closeModal() { modal.classList.add("hidden"); }
 modalClose.addEventListener("click", closeModal);
 modalOk.addEventListener("click", closeModal);
-modal.addEventListener("click", (e) => {
-  if (e.target === modal) closeModal();
-});
+modal.addEventListener("click", (e) => { if (e.target === modal) closeModal(); });
 
-// =================== PERFIL (LOCAL) ===================
-function saveProfileLocal(data) {
-  localStorage.setItem("motoraser_profile", JSON.stringify(data));
-}
-function loadProfileLocal() {
-  return JSON.parse(localStorage.getItem("motoraser_profile") || "{}");
-}
-function setFormFromProfile(p) {
-  nameInput.value = p?.name || "";
-  phoneInput.value = p?.phone || "";
-}
+// =================== PERFIL (LOCAL + FIRESTORE) ===================
+function saveProfileLocal(data){ localStorage.setItem("motoraser_profile", JSON.stringify(data)); }
+function loadProfileLocal(){ return JSON.parse(localStorage.getItem("motoraser_profile") || "{}"); }
+function setFormFromProfile(p){ nameInput.value = p?.name || ""; phoneInput.value = p?.phone || ""; }
 
-// =================== PERFIL (FIRESTORE) ===================
 async function loadProfileFromFirestore(uid) {
   const snap = await db.collection("users").doc(uid).get();
   if (!snap.exists) return null;
@@ -86,15 +77,12 @@ async function loadProfileFromFirestore(uid) {
 
 async function saveProfileToFirestore(uid, profile) {
   await db.collection("users").doc(uid).set(
-    {
-      profile,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    },
+    { profile, updatedAt: firebase.firestore.FieldValue.serverTimestamp() },
     { merge: true }
   );
 }
 
-// =================== AUTH (GOOGLE) ===================
+// =================== AUTH ===================
 btnLogin.addEventListener("click", async () => {
   try {
     const provider = new firebase.auth.GoogleAuthProvider();
@@ -105,11 +93,8 @@ btnLogin.addEventListener("click", async () => {
 });
 
 btnLogout.addEventListener("click", async () => {
-  try {
-    await auth.signOut();
-  } catch (err) {
-    openModal("Erro", `<p class="muted">${err?.message || err}</p>`);
-  }
+  try { await auth.signOut(); }
+  catch (err) { openModal("Erro", `<p class="muted">${err?.message || err}</p>`); }
 });
 
 auth.onAuthStateChanged(async (user) => {
@@ -125,48 +110,33 @@ auth.onAuthStateChanged(async (user) => {
     userName.textContent = user.displayName || "Sem nome";
     userEmail.textContent = user.email || "";
 
-    // salva dados base do user
+    // salva base do user
     try {
-      await db.collection("users").doc(user.uid).set(
-        {
-          name: user.displayName || "",
-          email: user.email || "",
-          photoURL: user.photoURL || "",
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        },
-        { merge: true }
-      );
-    } catch (err) {
-      openModal(
-        "Firestore bloqueou 😬",
-        `<p class="muted">Não consegui salvar o usuário no Firestore.</p>
-         <p class="muted"><b>Erro:</b> ${err?.message || err}</p>
-         <p class="muted">Isso é regra do Firestore. Eu te digo como liberar já já.</p>`
-      );
-    }
+      await db.collection("users").doc(user.uid).set({
+        name: user.displayName || "",
+        email: user.email || "",
+        photoURL: user.photoURL || "",
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    } catch (e) {}
 
-    // 🔥 carrega perfil do Firestore (prioridade)
+    // carrega perfil do Firestore (prioridade)
     try {
       const fsProfile = await loadProfileFromFirestore(user.uid);
       if (fsProfile) {
         setFormFromProfile(fsProfile);
-        saveProfileLocal(fsProfile); // espelha local também
+        saveProfileLocal(fsProfile);
       } else {
-        // se não tiver no Firestore, usa o local
         setFormFromProfile(loadProfileLocal());
       }
-    } catch (err) {
-      // se falhar, usa local
+    } catch (e) {
       setFormFromProfile(loadProfileLocal());
     }
   } else {
     btnLogin.classList.remove("hidden");
     btnLogout.classList.add("hidden");
-
     userStatus.textContent = "Usuário: visitante";
     userCard.classList.add("hidden");
-
-    // visitante usa só local
     setFormFromProfile(loadProfileLocal());
   }
 });
@@ -174,125 +144,49 @@ auth.onAuthStateChanged(async (user) => {
 // =================== SALVAR PERFIL ===================
 profileForm.addEventListener("submit", async (e) => {
   e.preventDefault();
-
-  const profile = {
-    name: nameInput.value.trim(),
-    phone: phoneInput.value.trim()
-  };
-
-  // sempre salva local (mesmo sem login)
+  const profile = { name: nameInput.value.trim(), phone: phoneInput.value.trim() };
   saveProfileLocal(profile);
 
-  // se estiver logado, salva no Firestore (NÚVEM)
   const user = auth.currentUser;
   if (user) {
     try {
       await saveProfileToFirestore(user.uid, profile);
-      openModal("Salvo na NUVEM ✅", `
-        <p class="muted">Seu perfil foi salvo no Firebase (Firestore).</p>
-        <p class="muted"><b>users/${user.uid}/profile</b></p>
-      `);
+      openModal("Salvo ✅", `<p class="muted">Perfil salvo no Firebase.</p>`);
       return;
     } catch (err) {
-      openModal("Não salvou no Firebase 😬", `
-        <p class="muted">Salvei no navegador, mas o Firebase bloqueou.</p>
-        <p class="muted"><b>Erro:</b> ${err?.message || err}</p>
-        <p class="muted">Isso é regra do Firestore. A gente ajusta e fica 100%.</p>
-      `);
+      openModal("Erro", `<p class="muted">${err?.message || err}</p>`);
       return;
     }
   }
-
-  openModal("Salvo local ✅", `<p class="muted">Você está como visitante. Entre com Google pra salvar na nuvem.</p>`);
+  openModal("Salvo local ✅", `<p class="muted">Entre com Google para salvar na nuvem.</p>`);
 });
 
 btnClear.addEventListener("click", async () => {
   localStorage.removeItem("motoraser_profile");
-  setFormFromProfile({ name: "", phone: "" });
-
+  setFormFromProfile({ name:"", phone:"" });
   const user = auth.currentUser;
   if (user) {
-    try {
-      await saveProfileToFirestore(user.uid, { name: "", phone: "" });
-    } catch (e) {}
+    try { await saveProfileToFirestore(user.uid, { name:"", phone:"" }); } catch(e){}
   }
-
-  openModal("Limpo ✅", `<p class="muted">Perfil apagado (local e, se logado, no Firebase).</p>`);
-});
-
-// =================== CORRIDAS (SIMULADAS) ===================
-function fakeRides() {
-  return [
-    { id: "1", title: "Corrida #1", from: "Centro", to: "Bairro A", eta: 6, demand: "Alta" },
-    { id: "2", title: "Corrida #2", from: "Altamira", to: "Bairro B", eta: 9, demand: "Média" },
-    { id: "3", title: "Corrida #3", from: "Orla", to: "Hospital", eta: 4, demand: "Alta" }
-  ];
-}
-function demandTagClass(d) {
-  const x = (d || "").toLowerCase();
-  if (x.includes("alta")) return "high";
-  if (x.includes("média") || x.includes("media")) return "mid";
-  return "low";
-}
-function renderRides() {
-  const rides = fakeRides();
-  ridesEl.innerHTML = "";
-  rides.forEach((r) => {
-    const div = document.createElement("div");
-    div.className = "ride";
-    div.innerHTML = `
-      <div>
-        <div class="rideTitle">${r.title}</div>
-        <div class="rideMeta">Origem: <b>${r.from}</b> → Destino: <b>${r.to}</b> • Chega em <b>${r.eta} min</b></div>
-      </div>
-      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-        <span class="tag ${demandTagClass(r.demand)}">Demanda: ${r.demand}</span>
-        <button class="btn ghost" data-ride="${r.id}">Detalhes</button>
-      </div>
-    `;
-    ridesEl.appendChild(div);
-  });
-
-  ridesEl.querySelectorAll("button[data-ride]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const r = fakeRides().find(x => x.id === btn.getAttribute("data-ride"));
-      openModal("Detalhes da Corrida", `
-        <p><b>${r.title}</b></p>
-        <p class="muted">Origem: ${r.from}<br/>Destino: ${r.to}<br/>Chegada: ${r.eta} min<br/>Demanda: ${r.demand}</p>
-      `);
-    });
-  });
-}
-renderRides();
-btnRefreshRides.addEventListener("click", renderRides);
-
-// =================== APOSTA (SIMULADOR) ===================
-btnAposta.addEventListener("click", () => {
-  openModal("Aposta Corrida", `
-    <p class="muted">Aqui vai entrar o sistema de aposta (dinheiro virtual).</p>
-    <p class="muted">Primeiro vamos deixar corridas reais no Firestore.</p>
-  `);
+  openModal("Limpo ✅", `<p class="muted">Perfil apagado.</p>`);
 });
 
 // =================== MAPA + LOCALIZAÇÃO ===================
-let map;
-let marker;
+let map, marker;
+let lastLocation = null;
 
 window.initMap = function initMap() {
   const fallback = { lat: -3.2041, lng: -52.2111 }; // Altamira
   map = new google.maps.Map(document.getElementById("map"), {
-    center: fallback,
-    zoom: 13,
-    mapTypeControl: false,
-    streetViewControl: false,
-    fullscreenControl: false
+    center: fallback, zoom: 13,
+    mapTypeControl:false, streetViewControl:false, fullscreenControl:false
   });
   marker = new google.maps.Marker({ position: fallback, map });
-
   mapInfo.textContent = "Toque em “Minha localização”.";
 };
 
 function setLocation(lat, lng) {
+  lastLocation = { lat, lng };
   const pos = { lat, lng };
   map.setCenter(pos);
   map.setZoom(15);
@@ -301,24 +195,215 @@ function setLocation(lat, lng) {
   mapInfo.textContent = "Localização carregada ✅";
 }
 
-btnLocate.addEventListener("click", () => {
-  if (!navigator.geolocation) {
-    openModal("Erro", `<p class="muted">Seu navegador não suporta localização.</p>`);
+async function getLocationOrAsk() {
+  if (lastLocation) return lastLocation;
+
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) return reject(new Error("Navegador sem geolocalização"));
+    mapInfo.textContent = "Pegando sua localização...";
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocation(pos.coords.latitude, pos.coords.longitude);
+        resolve(lastLocation);
+      },
+      (err) => reject(err),
+      { enableHighAccuracy:true, timeout:12000, maximumAge:0 }
+    );
+  });
+}
+
+btnLocate.addEventListener("click", async () => {
+  try { await getLocationOrAsk(); }
+  catch (err) {
+    mapInfo.textContent = "Não foi possível pegar localização.";
+    openModal("Localização bloqueada", `<p class="muted">${err?.message || err}</p>`);
+  }
+});
+
+// =================== CORRIDAS REAIS (FIRESTORE) ===================
+let ridesUnsub = null;
+
+function escapeHtml(s){
+  return (s || "").replace(/[&<>"']/g, (c) => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+  }[c]));
+}
+
+function renderRides(docs) {
+  ridesEl.innerHTML = "";
+  liveCount.textContent = `${docs.length} online`;
+
+  if (docs.length === 0) {
+    ridesEl.innerHTML = `<div class="muted">Nenhuma corrida aberta ainda.</div>`;
     return;
   }
 
-  mapInfo.textContent = "Pegando sua localização...";
-  navigator.geolocation.getCurrentPosition(
-    (pos) => setLocation(pos.coords.latitude, pos.coords.longitude),
-    (err) => {
-      mapInfo.textContent = "Não foi possível pegar localização.";
-      openModal("Localização bloqueada", `
-        <p class="muted">Permita a localização no navegador e tente de novo.</p>
-        <p class="muted">Detalhe: ${err?.message || err}</p>
-      `);
-    },
-    { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
-  );
-});
+  const me = auth.currentUser ? auth.currentUser.uid : null;
 
+  docs.forEach((doc) => {
+    const r = doc.data();
+    const isMine = me && r.createdByUid === me;
+    const isAccepted = r.status === "accepted";
+
+    const statusTag = isAccepted
+      ? `<span class="tag accepted">Aceita</span>`
+      : `<span class="tag open">Aberta</span>`;
+
+    const mineTag = isMine ? `<span class="tag mine">Minha</span>` : "";
+
+    const acceptBtn = (!isAccepted && me && !isMine)
+      ? `<button class="btn primary" data-action="accept" data-id="${doc.id}">✅ Aceitar</button>`
+      : "";
+
+    const acceptedInfo = isAccepted
+      ? `<div class="rideMeta">Aceita por: <b>${escapeHtml(r.acceptedByName || "—")}</b></div>`
+      : "";
+
+    const createdAt = r.createdAt?.toDate ? r.createdAt.toDate() : null;
+    const when = createdAt ? createdAt.toLocaleString() : "";
+
+    const div = document.createElement("div");
+    div.className = "ride";
+    div.innerHTML = `
+      <div>
+        <div class="rideTitle">🚗 Corrida</div>
+        <div class="rideMeta">Usuário: <b>${escapeHtml(r.createdByName || "—")}</b></div>
+        <div class="rideMeta">Destino: <b>${escapeHtml(r.destination || "—")}</b></div>
+        <div class="rideMeta">Origem: <b>${Number(r.originLat).toFixed(5)}, ${Number(r.originLng).toFixed(5)}</b></div>
+        ${acceptedInfo}
+        <div class="rideMeta">${escapeHtml(when)}</div>
+      </div>
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        ${statusTag}
+        ${mineTag}
+        <button class="btn ghost" data-action="zoom" data-lat="${r.originLat}" data-lng="${r.originLng}">📍 Ver no mapa</button>
+        ${acceptBtn}
+      </div>
+    `;
+    ridesEl.appendChild(div);
+  });
+
+  // ações
+  ridesEl.querySelectorAll("button[data-action='zoom']").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const lat = Number(btn.getAttribute("data-lat"));
+      const lng = Number(btn.getAttribute("data-lng"));
+      setLocation(lat, lng);
+      openModal("Mapa", `<p class="muted">Centralizado na origem da corrida.</p>`);
+    });
+  });
+
+  ridesEl.querySelectorAll("button[data-action='accept']").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.getAttribute("data-id");
+      await acceptRide(id);
+    });
+  });
+}
+
+function startRidesListener() {
+  if (ridesUnsub) ridesUnsub();
+
+  // Mostra as últimas corridas primeiro
+  ridesUnsub = db.collection("rides")
+    .orderBy("createdAt", "desc")
+    .limit(30)
+    .onSnapshot(
+      (snap) => renderRides(snap.docs),
+      (err) => openModal("Erro ao carregar corridas", `<p class="muted">${err?.message || err}</p>`)
+    );
+}
+
+startRidesListener();
+btnRefreshRides.addEventListener("click", startRidesListener);
+
+async function createRide() {
+  const user = auth.currentUser;
+  if (!user) {
+    openModal("Faça login", `<p class="muted">Entre com Google para criar corrida.</p>`);
+    return;
+  }
+
+  const destination = destInput.value.trim();
+  if (!destination) {
+    openModal("Destino obrigatório", `<p class="muted">Digite o destino para criar a corrida.</p>`);
+    return;
+  }
+
+  let loc;
+  try {
+    loc = await getLocationOrAsk();
+  } catch (err) {
+    openModal("Localização", `<p class="muted">Toque em “Minha localização” e permita o acesso.</p>`);
+    return;
+  }
+
+  btnCreateRide.disabled = true;
+  btnCreateRide.textContent = "Criando...";
+
+  try {
+    await db.collection("rides").add({
+      status: "open",
+      destination,
+      originLat: loc.lat,
+      originLng: loc.lng,
+
+      createdByUid: user.uid,
+      createdByName: user.displayName || "Sem nome",
+      createdByEmail: user.email || "",
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+
+      acceptedByUid: null,
+      acceptedByName: null,
+      acceptedAt: null
+    });
+
+    destInput.value = "";
+    openModal("Corrida criada ✅", `<p class="muted">Sua corrida foi publicada e todos online conseguem ver.</p>`);
+  } catch (err) {
+    openModal("Erro ao criar", `<p class="muted">${err?.message || err}</p>`);
+  } finally {
+    btnCreateRide.disabled = false;
+    btnCreateRide.textContent = "➕ Criar corrida";
+  }
+}
+
+btnCreateRide.addEventListener("click", createRide);
+
+async function acceptRide(rideId) {
+  const user = auth.currentUser;
+  if (!user) {
+    openModal("Faça login", `<p class="muted">Entre com Google para aceitar corrida.</p>`);
+    return;
+  }
+
+  const ref = db.collection("rides").doc(rideId);
+
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new Error("Corrida não existe.");
+      const r = snap.data();
+
+      if (r.status !== "open") throw new Error("Essa corrida já foi aceita.");
+      if (r.createdByUid === user.uid) throw new Error("Você não pode aceitar a sua própria corrida.");
+
+      tx.update(ref, {
+        status: "accepted",
+        acceptedByUid: user.uid,
+        acceptedByName: user.displayName || "Sem nome",
+        acceptedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    });
+
+    openModal("Aceita ✅", `<p class="muted">Você aceitou a corrida.</p>`);
+  } catch (err) {
+    openModal("Não deu 😬", `<p class="muted">${err?.message || err}</p>`);
+  }
+}
+
+// =================== OUTROS BOTÕES ===================
+btnAposta.addEventListener("click", () => {
+  openModal("Aposta Corrida", `<p class="muted">Depois a gente liga apostas. Primeiro: corridas reais.</p>`);
+});
 btnProfile.addEventListener("click", () => nameInput.focus());

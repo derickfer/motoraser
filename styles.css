@@ -1,13 +1,13 @@
 :root{
   --bg:#07111f;
   --card:#0b172a;
-  --card2:#091427;
   --text:#e5e7eb;
   --muted:#93a4b8;
   --line:rgba(148,163,184,.18);
   --primary:#06b6d4;
   --primary2:#0ea5e9;
-  --danger:#ef4444;
+  --ok:#22c55e;
+  --warn:#f59e0b;
 }
 
 *{box-sizing:border-box}
@@ -37,11 +37,10 @@ body{
   width:36px; height:36px; border-radius:10px;
   display:grid; place-items:center;
   background: linear-gradient(135deg, var(--primary2), var(--primary));
-  font-weight:800;
+  font-weight:900;
 }
-.brandName{font-weight:800; letter-spacing:.2px}
+.brandName{font-weight:900; letter-spacing:.2px}
 .brandTag{font-size:12px; color:var(--muted); margin-top:2px}
-
 .topActions{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
 
 .content{width:min(1100px, 92vw); margin:22px auto 32px}
@@ -73,8 +72,6 @@ body{
   font-size:12px;
 }
 
-.ctaRow{display:flex; gap:10px; flex-wrap:wrap; margin-top:10px}
-
 .btn{
   border:1px solid var(--line);
   background: rgba(255,255,255,.03);
@@ -82,7 +79,7 @@ body{
   padding:10px 12px;
   border-radius:12px;
   cursor:pointer;
-  font-weight:650;
+  font-weight:750;
   transition: transform .08s ease, background .2s ease, border-color .2s ease;
 }
 .btn:hover{background: rgba(255,255,255,.06)}
@@ -108,7 +105,7 @@ body{
   object-fit:cover;
   border:1px solid var(--line);
 }
-.userName{font-weight:800}
+.userName{font-weight:900}
 .userEmail{font-size:12px}
 
 .mapBox{
@@ -125,9 +122,30 @@ body{
   padding:10px 12px;
   border-bottom:1px solid var(--line);
 }
-.mapTitle{font-weight:800}
+.mapTitle{font-weight:900}
 .mapInfo{font-size:12px; color:var(--muted)}
-#map{width:100%; min-height:260px; flex:1}
+#map{width:100%; min-height:280px; flex:1}
+
+.createRide{
+  margin-top:12px;
+  padding:12px;
+  border-radius:14px;
+  border:1px solid var(--line);
+  background: rgba(255,255,255,.02);
+}
+.createTitle{font-weight:900; margin-bottom:10px}
+.createRow{display:flex; gap:10px; flex-wrap:wrap}
+
+.input{
+  width:100%;
+  padding:12px 12px;
+  border-radius:12px;
+  border:1px solid var(--line);
+  background: rgba(255,255,255,.03);
+  color:var(--text);
+  outline:none;
+}
+.input:focus{border-color: rgba(6,182,212,.5)}
 
 .grid{
   display:grid;
@@ -142,6 +160,7 @@ body{
 }
 .cardHead h2{margin:0}
 .cardHead p{margin:6px 0 0}
+.smallRow{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
 
 .rides{display:flex; flex-direction:column; gap:10px; margin-top:12px}
 .ride{
@@ -151,7 +170,7 @@ body{
   border:1px solid var(--line);
   background: rgba(255,255,255,.02);
 }
-.rideTitle{font-weight:800; margin-bottom:4px}
+.rideTitle{font-weight:900; margin-bottom:4px}
 .rideMeta{font-size:12px; color:var(--muted); line-height:1.4}
 .tag{
   font-size:12px;
@@ -159,22 +178,13 @@ body{
   border-radius:999px;
   border:1px solid var(--line);
   background: rgba(255,255,255,.02);
+  white-space:nowrap;
 }
-.tag.high{border-color: rgba(239,68,68,.45)}
-.tag.mid{border-color: rgba(14,165,233,.45)}
-.tag.low{border-color: rgba(34,197,94,.45)}
-
+.tag.open{border-color: rgba(245,158,11,.55)}
+.tag.accepted{border-color: rgba(34,197,94,.55)}
+.tag.mine{border-color: rgba(14,165,233,.55)}
 .form{display:flex; flex-direction:column; gap:12px; margin-top:10px}
 label{display:flex; flex-direction:column; gap:6px; font-size:12px; color:var(--muted)}
-input{
-  padding:12px 12px;
-  border-radius:12px;
-  border:1px solid var(--line);
-  background: rgba(255,255,255,.03);
-  color:var(--text);
-  outline:none;
-}
-input:focus{border-color: rgba(6,182,212,.5)}
 .formRow{display:flex; gap:10px; flex-wrap:wrap}
 
 .note{
@@ -184,7 +194,7 @@ input:focus{border-color: rgba(6,182,212,.5)}
   border:1px dashed rgba(148,163,184,.35);
   background: rgba(255,255,255,.02);
 }
-.noteTitle{font-weight:800; margin-bottom:6px}
+.noteTitle{font-weight:900; margin-bottom:6px}
 
 .footer{
   margin-top:auto;
@@ -217,6 +227,7 @@ input:focus{border-color: rgba(6,182,212,.5)}
 .modalTitle{font-weight:900}
 .modalBody{padding:14px; color:var(--text)}
 .modalActions{display:flex; justify-content:flex-end; gap:10px; padding:12px 14px; border-top:1px solid var(--line)}
+
 @media (max-width: 900px){
   .hero{grid-template-columns:1fr}
   .grid{grid-template-columns:1fr}
