@@ -14,9 +14,10 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
-// =================== ELEMENTOS ===================
+// =================== HELPERS ===================
 const $ = (id) => document.getElementById(id);
 
+// =================== ELEMENTOS ===================
 const btnLogin = $("btnLogin");
 const btnLogout = $("btnLogout");
 const btnLocate = $("btnLocate");
@@ -63,6 +64,36 @@ modal.addEventListener("click", (e) => {
   if (e.target === modal) closeModal();
 });
 
+// =================== PERFIL (LOCAL) ===================
+function saveProfileLocal(data) {
+  localStorage.setItem("motoraser_profile", JSON.stringify(data));
+}
+function loadProfileLocal() {
+  return JSON.parse(localStorage.getItem("motoraser_profile") || "{}");
+}
+function setFormFromProfile(p) {
+  nameInput.value = p?.name || "";
+  phoneInput.value = p?.phone || "";
+}
+
+// =================== PERFIL (FIRESTORE) ===================
+async function loadProfileFromFirestore(uid) {
+  const snap = await db.collection("users").doc(uid).get();
+  if (!snap.exists) return null;
+  const data = snap.data() || {};
+  return data.profile || null;
+}
+
+async function saveProfileToFirestore(uid, profile) {
+  await db.collection("users").doc(uid).set(
+    {
+      profile,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    },
+    { merge: true }
+  );
+}
+
 // =================== AUTH (GOOGLE) ===================
 btnLogin.addEventListener("click", async () => {
   try {
@@ -94,66 +125,99 @@ auth.onAuthStateChanged(async (user) => {
     userName.textContent = user.displayName || "Sem nome";
     userEmail.textContent = user.email || "";
 
-    // Salva/atualiza usuário no Firestore
+    // salva dados base do user
     try {
-      await db.collection("users").doc(user.uid).set({
-        name: user.displayName || "",
-        email: user.email || "",
-        photoURL: user.photoURL || "",
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-      }, { merge: true });
+      await db.collection("users").doc(user.uid).set(
+        {
+          name: user.displayName || "",
+          email: user.email || "",
+          photoURL: user.photoURL || "",
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        },
+        { merge: true }
+      );
     } catch (err) {
-      console.log("Erro salvando user:", err);
+      openModal(
+        "Firestore bloqueou 😬",
+        `<p class="muted">Não consegui salvar o usuário no Firestore.</p>
+         <p class="muted"><b>Erro:</b> ${err?.message || err}</p>
+         <p class="muted">Isso é regra do Firestore. Eu te digo como liberar já já.</p>`
+      );
     }
 
-    // Carrega perfil do localStorage
-    loadProfileFromLocal();
+    // 🔥 carrega perfil do Firestore (prioridade)
+    try {
+      const fsProfile = await loadProfileFromFirestore(user.uid);
+      if (fsProfile) {
+        setFormFromProfile(fsProfile);
+        saveProfileLocal(fsProfile); // espelha local também
+      } else {
+        // se não tiver no Firestore, usa o local
+        setFormFromProfile(loadProfileLocal());
+      }
+    } catch (err) {
+      // se falhar, usa local
+      setFormFromProfile(loadProfileLocal());
+    }
   } else {
     btnLogin.classList.remove("hidden");
     btnLogout.classList.add("hidden");
 
     userStatus.textContent = "Usuário: visitante";
     userCard.classList.add("hidden");
+
+    // visitante usa só local
+    setFormFromProfile(loadProfileLocal());
   }
 });
 
-// =================== PERFIL (LOCAL) ===================
-function loadProfileFromLocal() {
-  const saved = JSON.parse(localStorage.getItem("motoraser_profile") || "{}");
-  nameInput.value = saved.name || "";
-  phoneInput.value = saved.phone || "";
-}
-
+// =================== SALVAR PERFIL ===================
 profileForm.addEventListener("submit", async (e) => {
   e.preventDefault();
-  const data = {
+
+  const profile = {
     name: nameInput.value.trim(),
     phone: phoneInput.value.trim()
   };
-  localStorage.setItem("motoraser_profile", JSON.stringify(data));
 
-  // se estiver logado, salva no Firestore também
+  // sempre salva local (mesmo sem login)
+  saveProfileLocal(profile);
+
+  // se estiver logado, salva no Firestore (NÚVEM)
   const user = auth.currentUser;
   if (user) {
     try {
-      await db.collection("users").doc(user.uid).set({
-        profile: data,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-      }, { merge: true });
+      await saveProfileToFirestore(user.uid, profile);
+      openModal("Salvo na NUVEM ✅", `
+        <p class="muted">Seu perfil foi salvo no Firebase (Firestore).</p>
+        <p class="muted"><b>users/${user.uid}/profile</b></p>
+      `);
+      return;
     } catch (err) {
-      openModal("Erro", `<p class="muted">${err?.message || err}</p>`);
+      openModal("Não salvou no Firebase 😬", `
+        <p class="muted">Salvei no navegador, mas o Firebase bloqueou.</p>
+        <p class="muted"><b>Erro:</b> ${err?.message || err}</p>
+        <p class="muted">Isso é regra do Firestore. A gente ajusta e fica 100%.</p>
+      `);
       return;
     }
   }
 
-  openModal("Salvo ✅", `<p class="muted">Seu perfil foi salvo.</p>`);
+  openModal("Salvo local ✅", `<p class="muted">Você está como visitante. Entre com Google pra salvar na nuvem.</p>`);
 });
 
-btnClear.addEventListener("click", () => {
+btnClear.addEventListener("click", async () => {
   localStorage.removeItem("motoraser_profile");
-  nameInput.value = "";
-  phoneInput.value = "";
-  openModal("Limpo ✅", `<p class="muted">Dados do perfil apagados.</p>`);
+  setFormFromProfile({ name: "", phone: "" });
+
+  const user = auth.currentUser;
+  if (user) {
+    try {
+      await saveProfileToFirestore(user.uid, { name: "", phone: "" });
+    } catch (e) {}
+  }
+
+  openModal("Limpo ✅", `<p class="muted">Perfil apagado (local e, se logado, no Firebase).</p>`);
 });
 
 // =================== CORRIDAS (SIMULADAS) ===================
@@ -164,14 +228,12 @@ function fakeRides() {
     { id: "3", title: "Corrida #3", from: "Orla", to: "Hospital", eta: 4, demand: "Alta" }
   ];
 }
-
 function demandTagClass(d) {
   const x = (d || "").toLowerCase();
   if (x.includes("alta")) return "high";
   if (x.includes("média") || x.includes("media")) return "mid";
   return "low";
 }
-
 function renderRides() {
   const rides = fakeRides();
   ridesEl.innerHTML = "";
@@ -191,7 +253,6 @@ function renderRides() {
     ridesEl.appendChild(div);
   });
 
-  // botão detalhes
   ridesEl.querySelectorAll("button[data-ride]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const r = fakeRides().find(x => x.id === btn.getAttribute("data-ride"));
@@ -205,11 +266,11 @@ function renderRides() {
 renderRides();
 btnRefreshRides.addEventListener("click", renderRides);
 
-// =================== APOSTA CORRIDA (SIMULADOR) ===================
+// =================== APOSTA (SIMULADOR) ===================
 btnAposta.addEventListener("click", () => {
   openModal("Aposta Corrida", `
     <p class="muted">Aqui vai entrar o sistema de aposta (dinheiro virtual).</p>
-    <p class="muted">Próximo passo: salvar apostas no Firestore.</p>
+    <p class="muted">Primeiro vamos deixar corridas reais no Firestore.</p>
   `);
 });
 
@@ -218,8 +279,7 @@ let map;
 let marker;
 
 window.initMap = function initMap() {
-  // inicia em Altamira como fallback
-  const fallback = { lat: -3.2041, lng: -52.2111 };
+  const fallback = { lat: -3.2041, lng: -52.2111 }; // Altamira
   map = new google.maps.Map(document.getElementById("map"), {
     center: fallback,
     zoom: 13,
@@ -237,7 +297,6 @@ function setLocation(lat, lng) {
   map.setCenter(pos);
   map.setZoom(15);
   marker.setPosition(pos);
-
   locStatus.textContent = `Localização: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
   mapInfo.textContent = "Localização carregada ✅";
 }
@@ -250,9 +309,7 @@ btnLocate.addEventListener("click", () => {
 
   mapInfo.textContent = "Pegando sua localização...";
   navigator.geolocation.getCurrentPosition(
-    (pos) => {
-      setLocation(pos.coords.latitude, pos.coords.longitude);
-    },
+    (pos) => setLocation(pos.coords.latitude, pos.coords.longitude),
     (err) => {
       mapInfo.textContent = "Não foi possível pegar localização.";
       openModal("Localização bloqueada", `
@@ -264,7 +321,4 @@ btnLocate.addEventListener("click", () => {
   );
 });
 
-// botão perfil só dá foco no formulário
-btnProfile.addEventListener("click", () => {
-  nameInput.focus();
-});
+btnProfile.addEventListener("click", () => nameInput.focus());
