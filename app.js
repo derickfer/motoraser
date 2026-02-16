@@ -672,3 +672,95 @@ async function cancelChallenge(id){
     openModal("Erro", `<p class="muted">${escapeHtml(e?.message || String(e))}</p>`);
   }
 }
+/* ===========================
+   FINALIZAR CORRIDA (MANUAL)
+   =========================== */
+
+// Finaliza no Firebase com segurança (transaction)
+async function finalizarCorridaManual(challengeId) {
+  try {
+    const user = auth.currentUser;
+    if (!user) {
+      if (typeof openModal === "function") {
+        openModal("Login", `<p class="muted">Entre com Google para finalizar.</p>`);
+      } else {
+        alert("Entre com Google para finalizar.");
+      }
+      return;
+    }
+
+    const ref = db.collection("challenges").doc(challengeId);
+
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new Error("Corrida não existe.");
+
+      const c = snap.data() || {};
+
+      // Se quiser forçar somente quando estiver correndo, descomente:
+      // if (c.status !== "running") throw new Error("Só dá pra finalizar quando estiver ROLANDO.");
+
+      if (c.status === "finished") throw new Error("Essa corrida já foi finalizada.");
+
+      tx.update(ref, {
+        status: "finished",
+        winnerUid: user.uid,
+        winnerName: user.displayName || "Sem nome",
+        finishedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        manualFinish: true
+      });
+    });
+
+    if (typeof openModal === "function") {
+      openModal("Finalizada ✅", `<p class="muted">Corrida finalizada.</p>`);
+    } else {
+      alert("Corrida finalizada.");
+    }
+  } catch (e) {
+    const msg = e?.message || String(e);
+    if (typeof openModal === "function") {
+      openModal("Erro", `<p class="muted">${msg}</p>`);
+    } else {
+      alert(msg);
+    }
+  }
+}
+
+// Ativa cliques do botão (chame depois de renderizar a lista)
+function bindFinalizarCorridaBotoes(containerEl) {
+  if (!containerEl) return;
+
+  containerEl.querySelectorAll("[data-action='finalizar-corrida']").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.getAttribute("data-id");
+      if (!id) return;
+
+      // Confirmação simples (se você já usa modal, ele usa)
+      if (typeof openModal === "function" && typeof closeModal === "function") {
+        openModal(
+          "Finalizar corrida?",
+          `
+            <p class="muted">Tem certeza que deseja <b>FINALIZAR</b> agora?</p>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;">
+              <button id="__yesFinish" class="btn danger" type="button">SIM, FINALIZAR</button>
+              <button id="__noFinish" class="btn ghost" type="button">Cancelar</button>
+            </div>
+          `
+        );
+
+        setTimeout(() => {
+          const yes = document.getElementById("__yesFinish");
+          const no = document.getElementById("__noFinish");
+          if (no) no.onclick = closeModal;
+          if (yes) yes.onclick = async () => {
+            closeModal();
+            await finalizarCorridaManual(id);
+          };
+        }, 0);
+      } else {
+        const ok = confirm("Finalizar corrida agora?");
+        if (ok) finalizarCorridaManual(id);
+      }
+    });
+  });
+}
