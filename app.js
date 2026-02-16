@@ -116,17 +116,15 @@ function setRoleUI(role){
 
   roleStatus.textContent = role ? `Modo: ${role === "passenger" ? "Passageiro" : "Motorista"}` : "Modo: não definido";
 
-  // Mostra criar corrida só para passageiro
   const logged = !!auth.currentUser;
   createRideBox.classList.toggle("hidden", !(logged && role === "passenger"));
 
-  // Hint
   if (!logged) {
     ridesHint.textContent = "Faça login para escolher modo e interagir.";
   } else if (role === "passenger") {
-    ridesHint.textContent = "Passageiro: você cria corridas e pode finalizar quando estiver aceita.";
+    ridesHint.textContent = "Passageiro: crie corridas, aguarde motorista aceitar e finalize quando terminar.";
   } else if (role === "driver") {
-    ridesHint.textContent = "Motorista: você vê corridas abertas, aceita e pode finalizar.";
+    ridesHint.textContent = "Motorista: aceite corridas abertas e finalize ao terminar.";
   } else {
     ridesHint.textContent = "Escolha um modo (Passageiro/Motorista).";
   }
@@ -138,7 +136,6 @@ btnRolePassenger.addEventListener("click", async () => {
   try {
     await saveRoleToFirestore(u.uid, "passenger");
     setRoleUI("passenger");
-    openModal("Modo definido ✅", `<p class="muted">Você agora está como <b>Passageiro</b>.</p>`);
   } catch (e) {
     openModal("Erro", `<p class="muted">${e?.message || e}</p>`);
   }
@@ -150,7 +147,6 @@ btnRoleDriver.addEventListener("click", async () => {
   try {
     await saveRoleToFirestore(u.uid, "driver");
     setRoleUI("driver");
-    openModal("Modo definido ✅", `<p class="muted">Você agora está como <b>Motorista</b>.</p>`);
   } catch (e) {
     openModal("Erro", `<p class="muted">${e?.message || e}</p>`);
   }
@@ -184,7 +180,7 @@ auth.onAuthStateChanged(async (user) => {
     userName.textContent = user.displayName || "Sem nome";
     userEmail.textContent = user.email || "";
 
-    // salva base do user
+    // salva base
     try {
       await db.collection("users").doc(user.uid).set({
         name: user.displayName || "",
@@ -326,6 +322,8 @@ function startRidesListener() {
 
 function startHistoryListener() {
   stopHistoryListener();
+
+  // OBS: isso precisa de índice (o Firestore vai pedir).
   historyUnsub = db.collection("rides")
     .where("status", "==", "completed")
     .orderBy("completedAt", "desc")
@@ -339,10 +337,10 @@ function startHistoryListener() {
 btnRefreshRides.addEventListener("click", () => startRidesListener());
 btnRefreshHistory.addEventListener("click", () => startHistoryListener());
 
+// =================== RENDER CORRIDAS COM BOTÃO FINALIZAR FORTE ===================
 function renderRides(docs) {
   const me = auth.currentUser ? auth.currentUser.uid : null;
 
-  // só lista as que não estão finalizadas
   const active = docs
     .map(d => ({ id: d.id, ...d.data() }))
     .filter(r => r.status !== "completed");
@@ -355,19 +353,7 @@ function renderRides(docs) {
     return;
   }
 
-  // filtro por role (se quiser ver mais/menos)
-  // - passageiro: prioriza minhas corridas
-  // - motorista: prioriza abertas e as que eu aceitei
-  let ordered = active.slice();
-
-  if (currentRole === "passenger" && me) {
-    ordered.sort((a,b) => (b.createdByUid===me) - (a.createdByUid===me));
-  } else if (currentRole === "driver" && me) {
-    ordered.sort((a,b) => (a.status==="open") - (b.status==="open")); // abertas primeiro
-    ordered.sort((a,b) => (b.status==="open") - (a.status==="open"));
-  }
-
-  ordered.forEach((r) => {
+  active.forEach((r) => {
     const isMine = me && r.createdByUid === me;
     const isAcceptedByMe = me && r.acceptedByUid === me;
     const isAccepted = r.status === "accepted";
@@ -383,15 +369,15 @@ function renderRides(docs) {
         ? `<span class="tag passenger">Passageiro</span>`
         : "";
 
-    const acceptBtn = (!isAccepted && me && !isMine && currentRole === "driver")
-      ? `<button class="btn primary" data-action="accept" data-id="${r.id}">✅ Aceitar</button>`
+    // ✅ BOTÃO FINALIZAR CORRIDA (aparece só quando pode)
+    const canFinish = isAccepted && me && (isMine || isAcceptedByMe);
+    const finishBtn = canFinish
+      ? `<button class="btn danger" data-action="finish" data-id="${r.id}">🏁 FINALIZAR CORRIDA</button>`
       : "";
 
-    // Finalizar: pode finalizar se:
-    // - status accepted
-    // - e eu sou o passageiro (criador) OU eu sou o motorista (aceitou)
-    const finishBtn = (isAccepted && me && (isMine || isAcceptedByMe))
-      ? `<button class="btn ok" data-action="finish" data-id="${r.id}">🏁 Finalizar</button>`
+    // aceitar só motorista, corrida aberta, não ser do próprio
+    const acceptBtn = (!isAccepted && me && !isMine && currentRole === "driver")
+      ? `<button class="btn primary" data-action="accept" data-id="${r.id}">✅ Aceitar</button>`
       : "";
 
     const acceptedInfo = isAccepted
@@ -399,6 +385,7 @@ function renderRides(docs) {
       : `<div class="rideMeta">Motorista: <b>—</b></div>`;
 
     const createdAt = fmtTime(r.createdAt);
+
     const div = document.createElement("div");
     div.className = "ride";
     div.innerHTML = `
@@ -425,7 +412,6 @@ function renderRides(docs) {
     ridesEl.appendChild(div);
   });
 
-  // ações
   ridesEl.querySelectorAll("button[data-action='zoom']").forEach((btn) => {
     btn.addEventListener("click", () => {
       const lat = Number(btn.getAttribute("data-lat"));
@@ -442,14 +428,16 @@ function renderRides(docs) {
     });
   });
 
+  // ✅ AÇÃO DO BOTÃO FINALIZAR
   ridesEl.querySelectorAll("button[data-action='finish']").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const id = btn.getAttribute("data-id");
-      await finishRide(id);
+      await confirmFinishRide(id);
     });
   });
 }
 
+// =================== HISTÓRICO ===================
 function renderHistory(docs){
   historyEl.innerHTML = "";
   if (!docs || docs.length === 0) {
@@ -524,7 +512,7 @@ btnCreateRide.addEventListener("click", async () => {
     });
 
     destInput.value = "";
-    openModal("Criada ✅", `<p class="muted">Sua corrida foi publicada. Motoristas online conseguem aceitar.</p>`);
+    openModal("Criada ✅", `<p class="muted">Sua corrida foi publicada.</p>`);
   } catch (err) {
     openModal("Erro", `<p class="muted">${err?.message || err}</p>`);
   } finally {
@@ -557,10 +545,34 @@ async function acceptRide(rideId) {
       });
     });
 
-    openModal("Aceita ✅", `<p class="muted">Você aceitou a corrida. Agora pode finalizar quando chegar.</p>`);
+    openModal("Aceita ✅", `<p class="muted">Agora você pode finalizar no final da corrida.</p>`);
   } catch (err) {
     openModal("Não deu 😬", `<p class="muted">${err?.message || err}</p>`);
   }
+}
+
+// ✅ CONFIRMAÇÃO antes de finalizar
+async function confirmFinishRide(rideId){
+  openModal(
+    "Finalizar corrida?",
+    `
+      <p class="muted">Tem certeza que deseja <b>FINALIZAR</b> essa corrida?</p>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;">
+        <button id="confirmFinishYes" class="btn danger" type="button">SIM, FINALIZAR</button>
+        <button id="confirmFinishNo" class="btn ghost" type="button">Cancelar</button>
+      </div>
+    `
+  );
+
+  setTimeout(() => {
+    const yes = document.getElementById("confirmFinishYes");
+    const no = document.getElementById("confirmFinishNo");
+    if (no) no.onclick = closeModal;
+    if (yes) yes.onclick = async () => {
+      closeModal();
+      await finishRide(rideId);
+    };
+  }, 0);
 }
 
 async function finishRide(rideId) {
@@ -593,8 +605,8 @@ async function finishRide(rideId) {
   }
 }
 
-// =================== OUTROS BOTÕES ===================
+// =================== OUTROS ===================
 btnAposta.addEventListener("click", () => {
-  openModal("Aposta Corrida", `<p class="muted">Depois a gente liga apostas. Agora já está: corrida real + aceitar + finalizar + histórico.</p>`);
+  openModal("Aposta Corrida", `<p class="muted">Depois a gente liga apostas. Agora o foco é corrida real + aceitar + finalizar.</p>`);
 });
 btnProfile.addEventListener("click", () => nameInput.focus());
