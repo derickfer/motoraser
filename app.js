@@ -10,11 +10,11 @@ const firebaseConfig = {
 };
 
 firebase.initializeApp(firebaseConfig);
-
 const auth = firebase.auth();
 const db = firebase.firestore();
-
 const $ = (id) => document.getElementById(id);
+
+$("year").textContent = new Date().getFullYear();
 
 // =================== ELEMENTOS ===================
 const btnLogin = $("btnLogin");
@@ -23,11 +23,22 @@ const btnLocate = $("btnLocate");
 const btnAposta = $("btnAposta");
 const btnProfile = $("btnProfile");
 const btnRefreshRides = $("btnRefreshRides");
-const btnCreateRide = $("btnCreateRide");
+const btnRefreshHistory = $("btnRefreshHistory");
 
+const btnRolePassenger = $("btnRolePassenger");
+const btnRoleDriver = $("btnRoleDriver");
+
+const createRideBox = $("createRideBox");
+const btnCreateRide = $("btnCreateRide");
 const destInput = $("destInput");
 
+const ridesHint = $("ridesHint");
+const ridesEl = $("rides");
+const historyEl = $("history");
+const liveCount = $("liveCount");
+
 const userStatus = $("userStatus");
+const roleStatus = $("roleStatus");
 const locStatus = $("locStatus");
 const mapInfo = $("mapInfo");
 
@@ -35,9 +46,6 @@ const userCard = $("userCard");
 const userPhoto = $("userPhoto");
 const userName = $("userName");
 const userEmail = $("userEmail");
-
-const ridesEl = $("rides");
-const liveCount = $("liveCount");
 
 const profileForm = $("profileForm");
 const nameInput = $("name");
@@ -50,8 +58,6 @@ const modalBody = $("modalBody");
 const modalClose = $("modalClose");
 const modalOk = $("modalOk");
 
-$("year").textContent = new Date().getFullYear();
-
 // =================== MODAL ===================
 function openModal(title, html) {
   modalTitle.textContent = title;
@@ -63,16 +69,26 @@ modalClose.addEventListener("click", closeModal);
 modalOk.addEventListener("click", closeModal);
 modal.addEventListener("click", (e) => { if (e.target === modal) closeModal(); });
 
+// =================== HELPERS ===================
+function escapeHtml(s){
+  return (s || "").replace(/[&<>"']/g, (c) => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+  }[c]));
+}
+function fmtTime(ts){
+  if (!ts) return "";
+  const d = ts.toDate ? ts.toDate() : (ts instanceof Date ? ts : null);
+  return d ? d.toLocaleString() : "";
+}
+
 // =================== PERFIL (LOCAL + FIRESTORE) ===================
 function saveProfileLocal(data){ localStorage.setItem("motoraser_profile", JSON.stringify(data)); }
 function loadProfileLocal(){ return JSON.parse(localStorage.getItem("motoraser_profile") || "{}"); }
 function setFormFromProfile(p){ nameInput.value = p?.name || ""; phoneInput.value = p?.phone || ""; }
 
-async function loadProfileFromFirestore(uid) {
+async function loadUserDoc(uid) {
   const snap = await db.collection("users").doc(uid).get();
-  if (!snap.exists) return null;
-  const data = snap.data() || {};
-  return data.profile || null;
+  return snap.exists ? (snap.data() || {}) : null;
 }
 
 async function saveProfileToFirestore(uid, profile) {
@@ -81,6 +97,64 @@ async function saveProfileToFirestore(uid, profile) {
     { merge: true }
   );
 }
+
+async function saveRoleToFirestore(uid, role) {
+  await db.collection("users").doc(uid).set(
+    { role, updatedAt: firebase.firestore.FieldValue.serverTimestamp() },
+    { merge: true }
+  );
+}
+
+// =================== ROLE ===================
+let currentRole = null; // "passenger" | "driver" | null
+
+function setRoleUI(role){
+  currentRole = role;
+
+  btnRolePassenger.classList.toggle("active", role === "passenger");
+  btnRoleDriver.classList.toggle("active", role === "driver");
+
+  roleStatus.textContent = role ? `Modo: ${role === "passenger" ? "Passageiro" : "Motorista"}` : "Modo: não definido";
+
+  // Mostra criar corrida só para passageiro
+  const logged = !!auth.currentUser;
+  createRideBox.classList.toggle("hidden", !(logged && role === "passenger"));
+
+  // Hint
+  if (!logged) {
+    ridesHint.textContent = "Faça login para escolher modo e interagir.";
+  } else if (role === "passenger") {
+    ridesHint.textContent = "Passageiro: você cria corridas e pode finalizar quando estiver aceita.";
+  } else if (role === "driver") {
+    ridesHint.textContent = "Motorista: você vê corridas abertas, aceita e pode finalizar.";
+  } else {
+    ridesHint.textContent = "Escolha um modo (Passageiro/Motorista).";
+  }
+}
+
+btnRolePassenger.addEventListener("click", async () => {
+  const u = auth.currentUser;
+  if (!u) return openModal("Login", `<p class="muted">Entre com Google para escolher modo.</p>`);
+  try {
+    await saveRoleToFirestore(u.uid, "passenger");
+    setRoleUI("passenger");
+    openModal("Modo definido ✅", `<p class="muted">Você agora está como <b>Passageiro</b>.</p>`);
+  } catch (e) {
+    openModal("Erro", `<p class="muted">${e?.message || e}</p>`);
+  }
+});
+
+btnRoleDriver.addEventListener("click", async () => {
+  const u = auth.currentUser;
+  if (!u) return openModal("Login", `<p class="muted">Entre com Google para escolher modo.</p>`);
+  try {
+    await saveRoleToFirestore(u.uid, "driver");
+    setRoleUI("driver");
+    openModal("Modo definido ✅", `<p class="muted">Você agora está como <b>Motorista</b>.</p>`);
+  } catch (e) {
+    openModal("Erro", `<p class="muted">${e?.message || e}</p>`);
+  }
+});
 
 // =================== AUTH ===================
 btnLogin.addEventListener("click", async () => {
@@ -120,24 +194,36 @@ auth.onAuthStateChanged(async (user) => {
       }, { merge: true });
     } catch (e) {}
 
-    // carrega perfil do Firestore (prioridade)
+    // carrega perfil e role
     try {
-      const fsProfile = await loadProfileFromFirestore(user.uid);
-      if (fsProfile) {
-        setFormFromProfile(fsProfile);
-        saveProfileLocal(fsProfile);
-      } else {
-        setFormFromProfile(loadProfileLocal());
-      }
+      const udoc = await loadUserDoc(user.uid);
+      const profile = udoc?.profile || null;
+      const role = udoc?.role || null;
+
+      if (profile) { setFormFromProfile(profile); saveProfileLocal(profile); }
+      else { setFormFromProfile(loadProfileLocal()); }
+
+      setRoleUI(role);
     } catch (e) {
       setFormFromProfile(loadProfileLocal());
+      setRoleUI(null);
     }
+
+    startRidesListener();
+    startHistoryListener();
   } else {
     btnLogin.classList.remove("hidden");
     btnLogout.classList.add("hidden");
     userStatus.textContent = "Usuário: visitante";
     userCard.classList.add("hidden");
+
     setFormFromProfile(loadProfileLocal());
+    setRoleUI(null);
+
+    stopRidesListener();
+    stopHistoryListener();
+    renderRides([]);
+    renderHistory([]);
   }
 });
 
@@ -220,29 +306,70 @@ btnLocate.addEventListener("click", async () => {
   }
 });
 
-// =================== CORRIDAS REAIS (FIRESTORE) ===================
+// =================== CORRIDAS REAIS ===================
 let ridesUnsub = null;
+let historyUnsub = null;
 
-function escapeHtml(s){
-  return (s || "").replace(/[&<>"']/g, (c) => ({
-    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
-  }[c]));
+function stopRidesListener(){ if (ridesUnsub) ridesUnsub(); ridesUnsub = null; }
+function stopHistoryListener(){ if (historyUnsub) historyUnsub(); historyUnsub = null; }
+
+function startRidesListener() {
+  stopRidesListener();
+  ridesUnsub = db.collection("rides")
+    .orderBy("createdAt", "desc")
+    .limit(50)
+    .onSnapshot(
+      (snap) => renderRides(snap.docs),
+      (err) => openModal("Erro ao carregar corridas", `<p class="muted">${err?.message || err}</p>`)
+    );
 }
 
-function renderRides(docs) {
-  ridesEl.innerHTML = "";
-  liveCount.textContent = `${docs.length} online`;
+function startHistoryListener() {
+  stopHistoryListener();
+  historyUnsub = db.collection("rides")
+    .where("status", "==", "completed")
+    .orderBy("completedAt", "desc")
+    .limit(30)
+    .onSnapshot(
+      (snap) => renderHistory(snap.docs),
+      (err) => openModal("Erro no histórico", `<p class="muted">${err?.message || err}</p>`)
+    );
+}
 
-  if (docs.length === 0) {
-    ridesEl.innerHTML = `<div class="muted">Nenhuma corrida aberta ainda.</div>`;
+btnRefreshRides.addEventListener("click", () => startRidesListener());
+btnRefreshHistory.addEventListener("click", () => startHistoryListener());
+
+function renderRides(docs) {
+  const me = auth.currentUser ? auth.currentUser.uid : null;
+
+  // só lista as que não estão finalizadas
+  const active = docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(r => r.status !== "completed");
+
+  liveCount.textContent = `${active.length} online`;
+  ridesEl.innerHTML = "";
+
+  if (active.length === 0) {
+    ridesEl.innerHTML = `<div class="muted">Nenhuma corrida ativa agora.</div>`;
     return;
   }
 
-  const me = auth.currentUser ? auth.currentUser.uid : null;
+  // filtro por role (se quiser ver mais/menos)
+  // - passageiro: prioriza minhas corridas
+  // - motorista: prioriza abertas e as que eu aceitei
+  let ordered = active.slice();
 
-  docs.forEach((doc) => {
-    const r = doc.data();
+  if (currentRole === "passenger" && me) {
+    ordered.sort((a,b) => (b.createdByUid===me) - (a.createdByUid===me));
+  } else if (currentRole === "driver" && me) {
+    ordered.sort((a,b) => (a.status==="open") - (b.status==="open")); // abertas primeiro
+    ordered.sort((a,b) => (b.status==="open") - (a.status==="open"));
+  }
+
+  ordered.forEach((r) => {
     const isMine = me && r.createdByUid === me;
+    const isAcceptedByMe = me && r.acceptedByUid === me;
     const isAccepted = r.status === "accepted";
 
     const statusTag = isAccepted
@@ -250,34 +377,49 @@ function renderRides(docs) {
       : `<span class="tag open">Aberta</span>`;
 
     const mineTag = isMine ? `<span class="tag mine">Minha</span>` : "";
+    const roleTag = (currentRole === "driver")
+      ? `<span class="tag driver">Motorista</span>`
+      : (currentRole === "passenger")
+        ? `<span class="tag passenger">Passageiro</span>`
+        : "";
 
-    const acceptBtn = (!isAccepted && me && !isMine)
-      ? `<button class="btn primary" data-action="accept" data-id="${doc.id}">✅ Aceitar</button>`
+    const acceptBtn = (!isAccepted && me && !isMine && currentRole === "driver")
+      ? `<button class="btn primary" data-action="accept" data-id="${r.id}">✅ Aceitar</button>`
+      : "";
+
+    // Finalizar: pode finalizar se:
+    // - status accepted
+    // - e eu sou o passageiro (criador) OU eu sou o motorista (aceitou)
+    const finishBtn = (isAccepted && me && (isMine || isAcceptedByMe))
+      ? `<button class="btn ok" data-action="finish" data-id="${r.id}">🏁 Finalizar</button>`
       : "";
 
     const acceptedInfo = isAccepted
-      ? `<div class="rideMeta">Aceita por: <b>${escapeHtml(r.acceptedByName || "—")}</b></div>`
-      : "";
+      ? `<div class="rideMeta">Motorista: <b>${escapeHtml(r.acceptedByName || "—")}</b></div>`
+      : `<div class="rideMeta">Motorista: <b>—</b></div>`;
 
-    const createdAt = r.createdAt?.toDate ? r.createdAt.toDate() : null;
-    const when = createdAt ? createdAt.toLocaleString() : "";
-
+    const createdAt = fmtTime(r.createdAt);
     const div = document.createElement("div");
     div.className = "ride";
     div.innerHTML = `
       <div>
         <div class="rideTitle">🚗 Corrida</div>
-        <div class="rideMeta">Usuário: <b>${escapeHtml(r.createdByName || "—")}</b></div>
+        <div class="rideMeta">Passageiro: <b>${escapeHtml(r.createdByName || "—")}</b></div>
+        ${acceptedInfo}
         <div class="rideMeta">Destino: <b>${escapeHtml(r.destination || "—")}</b></div>
         <div class="rideMeta">Origem: <b>${Number(r.originLat).toFixed(5)}, ${Number(r.originLng).toFixed(5)}</b></div>
-        ${acceptedInfo}
-        <div class="rideMeta">${escapeHtml(when)}</div>
+        <div class="rideMeta">${escapeHtml(createdAt)}</div>
       </div>
+
       <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-        ${statusTag}
-        ${mineTag}
+        <div class="tagsRow">
+          ${statusTag}
+          ${mineTag}
+          ${roleTag}
+        </div>
         <button class="btn ghost" data-action="zoom" data-lat="${r.originLat}" data-lng="${r.originLng}">📍 Ver no mapa</button>
         ${acceptBtn}
+        ${finishBtn}
       </div>
     `;
     ridesEl.appendChild(div);
@@ -299,44 +441,64 @@ function renderRides(docs) {
       await acceptRide(id);
     });
   });
+
+  ridesEl.querySelectorAll("button[data-action='finish']").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.getAttribute("data-id");
+      await finishRide(id);
+    });
+  });
 }
 
-function startRidesListener() {
-  if (ridesUnsub) ridesUnsub();
-
-  // Mostra as últimas corridas primeiro
-  ridesUnsub = db.collection("rides")
-    .orderBy("createdAt", "desc")
-    .limit(30)
-    .onSnapshot(
-      (snap) => renderRides(snap.docs),
-      (err) => openModal("Erro ao carregar corridas", `<p class="muted">${err?.message || err}</p>`)
-    );
-}
-
-startRidesListener();
-btnRefreshRides.addEventListener("click", startRidesListener);
-
-async function createRide() {
-  const user = auth.currentUser;
-  if (!user) {
-    openModal("Faça login", `<p class="muted">Entre com Google para criar corrida.</p>`);
+function renderHistory(docs){
+  historyEl.innerHTML = "";
+  if (!docs || docs.length === 0) {
+    historyEl.innerHTML = `<div class="muted">Ainda não tem corridas finalizadas.</div>`;
     return;
   }
+
+  docs.forEach((d) => {
+    const r = d.data();
+    const div = document.createElement("div");
+    div.className = "ride";
+    div.innerHTML = `
+      <div>
+        <div class="rideTitle">✅ Finalizada</div>
+        <div class="rideMeta">Passageiro: <b>${escapeHtml(r.createdByName || "—")}</b></div>
+        <div class="rideMeta">Motorista: <b>${escapeHtml(r.acceptedByName || "—")}</b></div>
+        <div class="rideMeta">Destino: <b>${escapeHtml(r.destination || "—")}</b></div>
+        <div class="rideMeta">Finalizada em: <b>${escapeHtml(fmtTime(r.completedAt))}</b></div>
+      </div>
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <span class="tag done">Histórico</span>
+        <button class="btn ghost" data-action="zoom" data-lat="${r.originLat}" data-lng="${r.originLng}">📍 Ver origem</button>
+      </div>
+    `;
+    historyEl.appendChild(div);
+  });
+
+  historyEl.querySelectorAll("button[data-action='zoom']").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const lat = Number(btn.getAttribute("data-lat"));
+      const lng = Number(btn.getAttribute("data-lng"));
+      setLocation(lat, lng);
+      openModal("Mapa", `<p class="muted">Centralizado na origem da corrida do histórico.</p>`);
+    });
+  });
+}
+
+// =================== CRIAR / ACEITAR / FINALIZAR ===================
+btnCreateRide.addEventListener("click", async () => {
+  const user = auth.currentUser;
+  if (!user) return openModal("Login", `<p class="muted">Entre com Google para criar corrida.</p>`);
+  if (currentRole !== "passenger") return openModal("Modo", `<p class="muted">Para criar corrida, selecione <b>Passageiro</b>.</p>`);
 
   const destination = destInput.value.trim();
-  if (!destination) {
-    openModal("Destino obrigatório", `<p class="muted">Digite o destino para criar a corrida.</p>`);
-    return;
-  }
+  if (!destination) return openModal("Destino obrigatório", `<p class="muted">Digite o destino.</p>`);
 
   let loc;
-  try {
-    loc = await getLocationOrAsk();
-  } catch (err) {
-    openModal("Localização", `<p class="muted">Toque em “Minha localização” e permita o acesso.</p>`);
-    return;
-  }
+  try { loc = await getLocationOrAsk(); }
+  catch (e) { return openModal("Localização", `<p class="muted">Toque em “Minha localização” e permita o acesso.</p>`); }
 
   btnCreateRide.disabled = true;
   btnCreateRide.textContent = "Criando...";
@@ -355,27 +517,26 @@ async function createRide() {
 
       acceptedByUid: null,
       acceptedByName: null,
-      acceptedAt: null
+      acceptedAt: null,
+
+      completedByUid: null,
+      completedAt: null
     });
 
     destInput.value = "";
-    openModal("Corrida criada ✅", `<p class="muted">Sua corrida foi publicada e todos online conseguem ver.</p>`);
+    openModal("Criada ✅", `<p class="muted">Sua corrida foi publicada. Motoristas online conseguem aceitar.</p>`);
   } catch (err) {
-    openModal("Erro ao criar", `<p class="muted">${err?.message || err}</p>`);
+    openModal("Erro", `<p class="muted">${err?.message || err}</p>`);
   } finally {
     btnCreateRide.disabled = false;
     btnCreateRide.textContent = "➕ Criar corrida";
   }
-}
-
-btnCreateRide.addEventListener("click", createRide);
+});
 
 async function acceptRide(rideId) {
   const user = auth.currentUser;
-  if (!user) {
-    openModal("Faça login", `<p class="muted">Entre com Google para aceitar corrida.</p>`);
-    return;
-  }
+  if (!user) return openModal("Login", `<p class="muted">Entre com Google para aceitar.</p>`);
+  if (currentRole !== "driver") return openModal("Modo", `<p class="muted">Para aceitar corrida, selecione <b>Motorista</b>.</p>`);
 
   const ref = db.collection("rides").doc(rideId);
 
@@ -385,7 +546,7 @@ async function acceptRide(rideId) {
       if (!snap.exists) throw new Error("Corrida não existe.");
       const r = snap.data();
 
-      if (r.status !== "open") throw new Error("Essa corrida já foi aceita.");
+      if (r.status !== "open") throw new Error("Essa corrida já foi aceita/finalizada.");
       if (r.createdByUid === user.uid) throw new Error("Você não pode aceitar a sua própria corrida.");
 
       tx.update(ref, {
@@ -396,14 +557,44 @@ async function acceptRide(rideId) {
       });
     });
 
-    openModal("Aceita ✅", `<p class="muted">Você aceitou a corrida.</p>`);
+    openModal("Aceita ✅", `<p class="muted">Você aceitou a corrida. Agora pode finalizar quando chegar.</p>`);
   } catch (err) {
     openModal("Não deu 😬", `<p class="muted">${err?.message || err}</p>`);
   }
 }
 
+async function finishRide(rideId) {
+  const user = auth.currentUser;
+  if (!user) return openModal("Login", `<p class="muted">Entre com Google para finalizar.</p>`);
+
+  const ref = db.collection("rides").doc(rideId);
+
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new Error("Corrida não existe.");
+      const r = snap.data();
+
+      if (r.status !== "accepted") throw new Error("Só dá pra finalizar quando estiver ACEITA.");
+
+      const canFinish = (r.createdByUid === user.uid) || (r.acceptedByUid === user.uid);
+      if (!canFinish) throw new Error("Você não tem permissão para finalizar essa corrida.");
+
+      tx.update(ref, {
+        status: "completed",
+        completedByUid: user.uid,
+        completedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    });
+
+    openModal("Finalizada ✅", `<p class="muted">Corrida finalizada e enviada para o histórico.</p>`);
+  } catch (err) {
+    openModal("Erro", `<p class="muted">${err?.message || err}</p>`);
+  }
+}
+
 // =================== OUTROS BOTÕES ===================
 btnAposta.addEventListener("click", () => {
-  openModal("Aposta Corrida", `<p class="muted">Depois a gente liga apostas. Primeiro: corridas reais.</p>`);
+  openModal("Aposta Corrida", `<p class="muted">Depois a gente liga apostas. Agora já está: corrida real + aceitar + finalizar + histórico.</p>`);
 });
 btnProfile.addEventListener("click", () => nameInput.focus());

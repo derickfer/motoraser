@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>MOTORASER</title>
-  <link rel="stylesheet" href="./styles.css?v=2" />
+  <link rel="stylesheet" href="./styles.css?v=3" />
 </head>
 <body>
   <div class="app">
@@ -29,11 +29,12 @@
       <section class="card hero">
         <div class="heroLeft">
           <h1>MOTORASER Online 🚗</h1>
-          <p class="muted">Crie corridas reais no Firebase e deixe outras pessoas aceitarem ao vivo.</p>
+          <p class="muted">Crie corridas reais no Firebase, motorista aceita e depois finaliza. Tudo fica no histórico.</p>
 
           <div class="row">
             <div class="pill" id="locStatus">Localização: não carregada</div>
             <div class="pill" id="userStatus">Usuário: visitante</div>
+            <div class="pill" id="roleStatus">Modo: não definido</div>
           </div>
 
           <div id="userCard" class="userCard hidden">
@@ -44,8 +45,18 @@
             </div>
           </div>
 
-          <!-- CRIAR CORRIDA -->
-          <div class="createRide">
+          <!-- ROLE -->
+          <div class="roleBox">
+            <div class="roleTitle">Escolha seu modo</div>
+            <div class="roleRow">
+              <button id="btnRolePassenger" class="btn" type="button">🧍 Passageiro</button>
+              <button id="btnRoleDriver" class="btn" type="button">🚘 Motorista</button>
+            </div>
+            <div class="muted tiny">*Isso muda o que você vê (criar corrida vs aceitar/pegar corridas).</div>
+          </div>
+
+          <!-- CRIAR CORRIDA (PASSAGEIRO) -->
+          <div id="createRideBox" class="createRide hidden">
             <div class="createTitle">Pedir corrida</div>
             <div class="createRow">
               <input id="destInput" class="input" type="text" placeholder="Destino (ex: Hospital, Centro...)" />
@@ -55,7 +66,7 @@
           </div>
 
           <div class="ctaRow">
-            <button id="btnAposta" class="btn" type="button">🚗 APOSTA CORRIDA (depois)</button>
+            <button id="btnAposta" class="btn" type="button">🎲 APOSTA CORRIDA (depois)</button>
             <button id="btnProfile" class="btn ghost" type="button">👤 Perfil</button>
           </div>
         </div>
@@ -77,7 +88,7 @@
           <div class="cardHead">
             <div>
               <h2>Corridas ao vivo</h2>
-              <p class="muted">Atualiza sozinho (tempo real).</p>
+              <p class="muted" id="ridesHint">Atualiza sozinho (tempo real).</p>
             </div>
             <div class="smallRow">
               <span class="tag" id="liveCount">0 online</span>
@@ -110,9 +121,24 @@
           </form>
 
           <div class="note">
-            <div class="noteTitle">Próximo</div>
-            <div class="muted">Depois: separar “motorista” e “passageiro” + chat.</div>
+            <div class="noteTitle">Como funciona</div>
+            <div class="muted">
+              Passageiro cria → Motorista aceita → Qualquer um finaliza → Vai pro histórico.
+            </div>
           </div>
+        </section>
+
+        <section class="card full">
+          <div class="cardHead">
+            <div>
+              <h2>Histórico</h2>
+              <p class="muted">Corridas finalizadas (últimas 30).</p>
+            </div>
+            <div class="smallRow">
+              <button id="btnRefreshHistory" class="btn ghost" type="button">🔄 Atualizar</button>
+            </div>
+          </div>
+          <div class="rides" id="history"></div>
         </section>
       </section>
     </main>
@@ -141,7 +167,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 
-  <script src="./app.js?v=2"></script>
+  <script src="./app.js?v=3"></script>
 
   <!-- Google Maps -->
   <script

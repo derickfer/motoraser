@@ -8,6 +8,7 @@
   --primary2:#0ea5e9;
   --ok:#22c55e;
   --warn:#f59e0b;
+  --danger:#ef4444;
 }
 
 *{box-sizing:border-box}
@@ -80,16 +81,28 @@ body{
   border-radius:12px;
   cursor:pointer;
   font-weight:750;
-  transition: transform .08s ease, background .2s ease, border-color .2s ease;
+  transition: transform .08s ease, background .2s ease, border-color .2s ease, opacity .2s ease;
 }
 .btn:hover{background: rgba(255,255,255,.06)}
 .btn:active{transform: translateY(1px)}
+.btn:disabled{opacity:.6; cursor:not-allowed}
 .btn.primary{
   border-color: transparent;
   background: linear-gradient(135deg, var(--primary2), var(--primary));
   color:#001018;
 }
 .btn.ghost{background: rgba(255,255,255,.02)}
+.btn.ok{
+  border-color: transparent;
+  background: linear-gradient(135deg, rgba(34,197,94,.95), rgba(16,185,129,.95));
+  color:#001018;
+}
+.btn.danger{
+  border-color: transparent;
+  background: linear-gradient(135deg, rgba(239,68,68,.95), rgba(244,63,94,.95));
+  color:#120005;
+}
+
 .hidden{display:none!important}
 
 .userCard{
@@ -126,6 +139,20 @@ body{
 .mapInfo{font-size:12px; color:var(--muted)}
 #map{width:100%; min-height:280px; flex:1}
 
+.roleBox{
+  margin-top:12px;
+  padding:12px;
+  border-radius:14px;
+  border:1px solid var(--line);
+  background: rgba(255,255,255,.02);
+}
+.roleTitle{font-weight:900; margin-bottom:10px}
+.roleRow{display:flex; gap:10px; flex-wrap:wrap}
+.btn.active{
+  border-color: rgba(6,182,212,.5);
+  background: rgba(6,182,212,.12);
+}
+
 .createRide{
   margin-top:12px;
   padding:12px;
@@ -153,6 +180,7 @@ body{
   gap:16px;
   margin-top:16px;
 }
+.full{grid-column:1 / -1;}
 
 .cardHead{
   display:flex; justify-content:space-between; align-items:flex-start;
@@ -172,6 +200,7 @@ body{
 }
 .rideTitle{font-weight:900; margin-bottom:4px}
 .rideMeta{font-size:12px; color:var(--muted); line-height:1.4}
+.tagsRow{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
 .tag{
   font-size:12px;
   padding:6px 10px;
@@ -182,7 +211,11 @@ body{
 }
 .tag.open{border-color: rgba(245,158,11,.55)}
 .tag.accepted{border-color: rgba(34,197,94,.55)}
+.tag.done{border-color: rgba(14,165,233,.55)}
 .tag.mine{border-color: rgba(14,165,233,.55)}
+.tag.driver{border-color: rgba(34,197,94,.55)}
+.tag.passenger{border-color: rgba(245,158,11,.55)}
+
 .form{display:flex; flex-direction:column; gap:12px; margin-top:10px}
 label{display:flex; flex-direction:column; gap:6px; font-size:12px; color:var(--muted)}
 .formRow{display:flex; gap:10px; flex-wrap:wrap}
@@ -232,4 +265,5 @@ label{display:flex; flex-direction:column; gap:6px; font-size:12px; color:var(--
   .hero{grid-template-columns:1fr}
   .grid{grid-template-columns:1fr}
   #map{min-height:240px}
+  .full{grid-column:auto;}
 }
