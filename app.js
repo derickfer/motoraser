@@ -12,28 +12,38 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
-
 const $ = (id) => document.getElementById(id);
+
 $("year").textContent = new Date().getFullYear();
 
-// =================== UI ===================
+// =================== ELEMENTOS ===================
 const btnLogin = $("btnLogin");
 const btnLogout = $("btnLogout");
 const btnLocate = $("btnLocate");
-const btnCreateChallenge = $("btnCreateChallenge");
-const btnRefresh = $("btnRefresh");
+const btnProfile = $("btnProfile");
 
 const userStatus = $("userStatus");
 const locStatus = $("locStatus");
 const mapInfo = $("mapInfo");
-const challengesEl = $("challenges");
-const liveCount = $("liveCount");
+
+const userCard = $("userCard");
+const userPhoto = $("userPhoto");
+const userName = $("userName");
+const userEmail = $("userEmail");
 
 const profileForm = $("profileForm");
 const nameInput = $("name");
 const phoneInput = $("phone");
 const btnClear = $("btnClear");
 
+const challengeHint = $("challengeHint");
+const challengeCreateBox = $("challengeCreateBox");
+const challengeDest = $("challengeDest");
+const btnCreateChallenge = $("btnCreateChallenge");
+const btnRefreshChallenges = $("btnRefreshChallenges");
+const challengesEl = $("challenges");
+
+// Modal
 const modal = $("modal");
 const modalTitle = $("modalTitle");
 const modalBody = $("modalBody");
@@ -46,10 +56,10 @@ function openModal(title, html) {
   modalBody.innerHTML = html;
   modal.classList.remove("hidden");
 }
-function closeModal(){ modal.classList.add("hidden"); }
-modalClose.onclick = closeModal;
-modalOk.onclick = closeModal;
-modal.onclick = (e) => { if (e.target === modal) closeModal(); };
+function closeModal() { modal.classList.add("hidden"); }
+modalClose.addEventListener("click", closeModal);
+modalOk.addEventListener("click", closeModal);
+modal.addEventListener("click", (e) => { if (e.target === modal) closeModal(); });
 
 // =================== HELPERS ===================
 function escapeHtml(s){
@@ -59,86 +69,51 @@ function escapeHtml(s){
 }
 function fmtTime(ts){
   if (!ts) return "";
-  const d = ts.toDate ? ts.toDate() : null;
+  const d = ts.toDate ? ts.toDate() : (ts instanceof Date ? ts : null);
   return d ? d.toLocaleString() : "";
 }
-function haversineMeters(a, b){
-  const R = 6371000;
-  const toRad = (x) => x * Math.PI / 180;
-  const dLat = toRad(b.lat - a.lat);
-  const dLng = toRad(b.lng - a.lng);
-  const lat1 = toRad(a.lat);
-  const lat2 = toRad(b.lat);
-  const s = Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLng/2)**2;
-  return 2 * R * Math.asin(Math.sqrt(s));
-}
-function canGeofenceArrive(myLoc, destLoc, radiusMeters = 120){
-  if (!myLoc || !destLoc) return false;
-  const dist = haversineMeters(myLoc, destLoc);
-  return dist <= radiusMeters;
+function randInt(min, max){
+  return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-// =================== PROFILE (local + firestore) ===================
+// =================== PERFIL LOCAL ===================
 function saveProfileLocal(data){ localStorage.setItem("motoraser_profile", JSON.stringify(data)); }
 function loadProfileLocal(){ return JSON.parse(localStorage.getItem("motoraser_profile") || "{}"); }
 function setFormFromProfile(p){ nameInput.value = p?.name || ""; phoneInput.value = p?.phone || ""; }
 
-async function saveProfileToFirestore(uid, profile) {
-  await db.collection("users").doc(uid).set(
-    { profile, updatedAt: firebase.firestore.FieldValue.serverTimestamp() },
-    { merge: true }
-  );
-}
-async function loadUserDoc(uid){
-  const snap = await db.collection("users").doc(uid).get();
-  return snap.exists ? (snap.data() || {}) : null;
-}
-
-// =================== MAP (Leaflet) ===================
-let map, meMarker, destMarker;
+// =================== MAPA + LOCALIZAÇÃO ===================
+let map, marker;
 let lastLocation = null;
-let lastDest = null;
 
-function initMap(){
-  // Altamira fallback
-  const fallback = { lat: -3.2041, lng: -52.2111 };
-  map = L.map("map", { zoomControl: true }).setView([fallback.lat, fallback.lng], 13);
-
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution: "&copy; OpenStreetMap"
-  }).addTo(map);
-
-  meMarker = L.marker([fallback.lat, fallback.lng]).addTo(map).bindPopup("Você");
-  destMarker = null;
-
+window.initMap = function initMap() {
+  const fallback = { lat: -3.2041, lng: -52.2111 }; // Altamira
+  map = new google.maps.Map(document.getElementById("map"), {
+    center: fallback, zoom: 13,
+    mapTypeControl:false, streetViewControl:false, fullscreenControl:false
+  });
+  marker = new google.maps.Marker({ position: fallback, map });
   mapInfo.textContent = "Toque em “Minha localização”.";
-}
-initMap();
+};
 
-function setMyLocation(lat, lng){
+function setLocation(lat, lng) {
   lastLocation = { lat, lng };
-  meMarker.setLatLng([lat, lng]);
-  map.setView([lat, lng], 15);
+  const pos = { lat, lng };
+  map.setCenter(pos);
+  map.setZoom(15);
+  marker.setPosition(pos);
   locStatus.textContent = `Localização: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-  mapInfo.textContent = "Localização OK ✅";
+  mapInfo.textContent = "Localização carregada ✅";
 }
 
-function setDestinationOnMap(dest){
-  lastDest = dest;
-  if (destMarker) { map.removeLayer(destMarker); destMarker = null; }
-  destMarker = L.marker([dest.lat, dest.lng]).addTo(map).bindPopup("Destino");
-}
-
-async function getLocationOrAsk(){
+async function getLocationOrAsk() {
   if (lastLocation) return lastLocation;
 
   return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) return reject(new Error("Sem geolocalização no navegador."));
-    mapInfo.textContent = "Pegando localização...";
+    if (!navigator.geolocation) return reject(new Error("Navegador sem geolocalização"));
+    mapInfo.textContent = "Pegando sua localização...";
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setMyLocation(pos.coords.latitude, pos.coords.longitude);
+        setLocation(pos.coords.latitude, pos.coords.longitude);
         resolve(lastLocation);
       },
       (err) => reject(err),
@@ -147,23 +122,27 @@ async function getLocationOrAsk(){
   });
 }
 
-btnLocate.onclick = async () => {
+btnLocate.addEventListener("click", async () => {
   try { await getLocationOrAsk(); }
-  catch (e) { openModal("Localização", `<p class="muted">${escapeHtml(e?.message || String(e))}</p>`); }
-};
+  catch (err) {
+    mapInfo.textContent = "Não foi possível pegar localização.";
+    openModal("Localização bloqueada", `<p class="muted">${err?.message || err}</p>`);
+  }
+});
 
 // =================== AUTH ===================
-btnLogin.onclick = async () => {
+btnLogin.addEventListener("click", async () => {
   try {
     const provider = new firebase.auth.GoogleAuthProvider();
     await auth.signInWithPopup(provider);
-  } catch (e) {
-    openModal("Erro no login", `<p class="muted">${escapeHtml(e?.message || String(e))}</p>`);
+  } catch (err) {
+    openModal("Erro no login", `<p class="muted">${err?.message || err}</p>`);
   }
-};
-btnLogout.onclick = async () => {
-  try { await auth.signOut(); } catch(e){}
-};
+});
+btnLogout.addEventListener("click", async () => {
+  try { await auth.signOut(); }
+  catch (err) { openModal("Erro", `<p class="muted">${err?.message || err}</p>`); }
+});
 
 auth.onAuthStateChanged(async (user) => {
   if (user) {
@@ -171,504 +150,473 @@ auth.onAuthStateChanged(async (user) => {
     btnLogout.classList.remove("hidden");
     userStatus.textContent = `Usuário: ${user.displayName || "Sem nome"}`;
 
-    // sync básico
-    try{
-      await db.collection("users").doc(user.uid).set({
-        name: user.displayName || "",
-        email: user.email || "",
-        photoURL: user.photoURL || "",
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-      }, { merge:true });
-    }catch(e){}
+    userCard.classList.remove("hidden");
+    userPhoto.src = user.photoURL || "";
+    userPhoto.style.display = user.photoURL ? "block" : "none";
+    userName.textContent = user.displayName || "Sem nome";
+    userEmail.textContent = user.email || "";
 
-    // carrega perfil
-    try{
-      const doc = await loadUserDoc(user.uid);
-      if (doc?.profile) { setFormFromProfile(doc.profile); saveProfileLocal(doc.profile); }
-      else { setFormFromProfile(loadProfileLocal()); }
-    }catch(e){
-      setFormFromProfile(loadProfileLocal());
-    }
+    const p = loadProfileLocal();
+    setFormFromProfile(p);
+
+    challengeCreateBox.classList.remove("hidden");
+    challengeHint.textContent = "Crie um desafio ou aceite um que estiver aberto.";
 
     startChallengesListener();
   } else {
     btnLogin.classList.remove("hidden");
     btnLogout.classList.add("hidden");
     userStatus.textContent = "Usuário: visitante";
+
+    userCard.classList.add("hidden");
     setFormFromProfile(loadProfileLocal());
+
+    challengeCreateBox.classList.add("hidden");
+    challengeHint.textContent = "Entre com Google pra criar/aceitar.";
     stopChallengesListener();
     renderChallenges([]);
   }
 });
 
-// =================== PROFILE FORM ===================
-profileForm.onsubmit = async (e) => {
+// =================== PERFIL ===================
+profileForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   const profile = { name: nameInput.value.trim(), phone: phoneInput.value.trim() };
   saveProfileLocal(profile);
+  openModal("Salvo ✅", `<p class="muted">Perfil salvo no seu navegador.</p>`);
+});
 
-  const u = auth.currentUser;
-  if (u) {
-    try{
-      await saveProfileToFirestore(u.uid, profile);
-      openModal("Salvo ✅", `<p class="muted">Perfil salvo no Firebase.</p>`);
-      return;
-    }catch(err){
-      openModal("Erro", `<p class="muted">${escapeHtml(err?.message || String(err))}</p>`);
-      return;
-    }
-  }
-  openModal("Salvo local ✅", `<p class="muted">Entre com Google para salvar na nuvem.</p>`);
-};
-
-btnClear.onclick = async () => {
+btnClear.addEventListener("click", () => {
   localStorage.removeItem("motoraser_profile");
   setFormFromProfile({ name:"", phone:"" });
-  const u = auth.currentUser;
-  if (u) {
-    try{ await saveProfileToFirestore(u.uid, { name:"", phone:"" }); }catch(e){}
-  }
   openModal("Limpo ✅", `<p class="muted">Perfil apagado.</p>`);
-};
+});
 
-// =================== CHALLENGES (Firestore) ===================
-// Collection: challenges
-// status: "open" | "accepted" | "racing" | "finished" | "canceled"
+btnProfile.addEventListener("click", () => nameInput.focus());
 
-let unsubChallenges = null;
-
-function stopChallengesListener(){
-  if (unsubChallenges) unsubChallenges();
-  unsubChallenges = null;
-}
+// =================== DESAFIOS (SIMULADOR) ===================
+let challengesUnsub = null;
+function stopChallengesListener(){ if (challengesUnsub) challengesUnsub(); challengesUnsub = null; }
 
 function startChallengesListener(){
   stopChallengesListener();
-  unsubChallenges = db.collection("challenges")
+  challengesUnsub = db.collection("challenges")
     .orderBy("createdAt", "desc")
     .limit(50)
     .onSnapshot(
       (snap) => renderChallenges(snap.docs),
-      (err) => openModal("Erro", `<p class="muted">${escapeHtml(err?.message || String(err))}</p>`)
+      (err) => openModal("Erro", `<p class="muted">${err?.message || err}</p>`)
     );
 }
 
-btnRefresh.onclick = () => startChallengesListener();
+btnRefreshChallenges.addEventListener("click", () => startChallengesListener());
 
-// =================== CREATE CHALLENGE ===================
-btnCreateChallenge.onclick = async () => {
-  const u = auth.currentUser;
-  if (!u) return openModal("Login", `<p class="muted">Entre com Google para criar desafio.</p>`);
+btnCreateChallenge.addEventListener("click", async () => {
+  const user = auth.currentUser;
+  if (!user) return openModal("Login", `<p class="muted">Entre com Google primeiro.</p>`);
 
-  // precisa de localização
-  let myLoc;
-  try { myLoc = await getLocationOrAsk(); }
-  catch(e){ return openModal("Localização", `<p class="muted">Permita a localização primeiro.</p>`); }
+  const dest = challengeDest.value.trim();
+  if (!dest) return openModal("Destino obrigatório", `<p class="muted">Digite o destino do desafio.</p>`);
 
-  openModal("Criar desafio 🏁", `
-    <div class="muted" style="margin-bottom:10px">
-      Digite o destino e a “aposta” em pontos (simulador).
-    </div>
+  btnCreateChallenge.disabled = true;
+  btnCreateChallenge.textContent = "Criando...";
 
-    <label style="display:flex;flex-direction:column;gap:6px;margin:10px 0">
-      <span class="muted">Destino (nome)</span>
-      <input id="cDestName" placeholder="Ex: Orla do Xingu" />
-    </label>
+  try {
+    await db.collection("challenges").add({
+      status: "open",
+      destination: dest,
 
-    <label style="display:flex;flex-direction:column;gap:6px;margin:10px 0">
-      <span class="muted">Destino (LAT)</span>
-      <input id="cLat" placeholder="-3.20410" />
-    </label>
+      createdByUid: user.uid,
+      createdByName: user.displayName || "Sem nome",
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
 
-    <label style="display:flex;flex-direction:column;gap:6px;margin:10px 0">
-      <span class="muted">Destino (LNG)</span>
-      <input id="cLng" placeholder="-52.21110" />
-    </label>
+      acceptedByUid: null,
+      acceptedByName: null,
+      acceptedAt: null,
 
-    <label style="display:flex;flex-direction:column;gap:6px;margin:10px 0">
-      <span class="muted">Aposta (pontos)</span>
-      <input id="cStake" type="number" value="10" min="0" />
-    </label>
+      // simulação
+      startAt: null,
+      durationMsCreator: null,
+      durationMsOpponent: null,
 
-    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">
-      <button id="cCreate" class="btn primary" type="button">Criar</button>
-      <button id="cCancel" class="btn ghost" type="button">Cancelar</button>
-    </div>
+      // controle manual
+      manualFinishByUid: null,
+      manualFinishReason: null,
 
-    <div class="tiny muted" style="margin-top:10px">
-      Dica: LAT/LNG você pega no mapa (depois eu te boto um seletor clicando no mapa).
-    </div>
-  `);
+      winnerUid: null,
+      winnerName: null,
+      finishedAt: null
+    });
 
-  setTimeout(() => {
-    const btnC = document.getElementById("cCreate");
-    const btnX = document.getElementById("cCancel");
-    btnX.onclick = closeModal;
+    challengeDest.value = "";
+    openModal("Criado ✅", `<p class="muted">Desafio criado! Agora alguém pode aceitar.</p>`);
+  } catch (e) {
+    openModal("Erro", `<p class="muted">${e?.message || e}</p>`);
+  } finally {
+    btnCreateChallenge.disabled = false;
+    btnCreateChallenge.textContent = "⚡ Criar desafio";
+  }
+});
 
-    btnC.onclick = async () => {
-      const destName = (document.getElementById("cDestName").value || "").trim();
-      const lat = Number(document.getElementById("cLat").value);
-      const lng = Number(document.getElementById("cLng").value);
-      const stake = Number(document.getElementById("cStake").value || 0);
-
-      if (!destName) return openModal("Erro", `<p class="muted">Digite o nome do destino.</p>`);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return openModal("Erro", `<p class="muted">LAT/LNG inválidos.</p>`);
-
-      try{
-        await db.collection("challenges").add({
-          status: "open",
-          stakePoints: stake,
-
-          createdByUid: u.uid,
-          createdByName: u.displayName || "Sem nome",
-          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-
-          acceptedByUid: null,
-          acceptedByName: null,
-          acceptedAt: null,
-
-          // destino único pros dois
-          destinationName: destName,
-          destinationLat: lat,
-          destinationLng: lng,
-
-          // pontos de corrida
-          startedAt: null,
-
-          arrivedCreatorAt: null,
-          arrivedAccepterAt: null,
-          winnerUid: null,
-          winnerName: null,
-          finishedAt: null,
-
-          originCreatorLat: myLoc.lat,
-          originCreatorLng: myLoc.lng,
-          originAccepterLat: null,
-          originAccepterLng: null
-        });
-
-        closeModal();
-        openModal("Desafio criado ✅", `<p class="muted">Agora outro piloto pode aceitar.</p>`);
-      }catch(e){
-        openModal("Erro", `<p class="muted">${escapeHtml(e?.message || String(e))}</p>`);
-      }
-    };
-  }, 0);
-};
-
-// =================== RENDER CHALLENGES ===================
 function renderChallenges(docs){
-  const u = auth.currentUser;
-  const me = u ? u.uid : null;
-
-  const list = docs.map(d => ({ id:d.id, ...d.data() }))
-    .filter(x => x.status !== "finished" && x.status !== "canceled");
-
-  liveCount.textContent = `${list.length} online`;
+  const me = auth.currentUser ? auth.currentUser.uid : null;
   challengesEl.innerHTML = "";
 
-  if (!list.length){
-    challengesEl.innerHTML = `<div class="muted">Nenhum desafio ativo agora.</div>`;
+  const list = docs.map(d => ({ id:d.id, ...d.data() }));
+
+  if (list.length === 0) {
+    challengesEl.innerHTML = `<div class="muted">Nenhum desafio por enquanto.</div>`;
     return;
   }
 
-  for (const c of list){
+  list.forEach((c) => {
     const isMine = me && c.createdByUid === me;
-    const isAcceptedByMe = me && c.acceptedByUid === me;
+    const isOpponent = me && c.acceptedByUid === me;
 
     const statusTag =
       c.status === "open" ? `<span class="tag open">Aberto</span>` :
       c.status === "accepted" ? `<span class="tag accepted">Aceito</span>` :
-      `<span class="tag racing">Correndo</span>`;
+      c.status === "running" ? `<span class="tag accepted">Rolando</span>` :
+      `<span class="tag done">Finalizado</span>`;
 
-    const mineTag = isMine ? `<span class="tag mine">Meu desafio</span>` : "";
-    const stakeTag = `<span class="tag done">Aposta: ${Number(c.stakePoints||0)} pts</span>`;
+    const mineTag = isMine ? `<span class="tag mine">Meu</span>` : "";
 
-    const dest = { lat:Number(c.destinationLat), lng:Number(c.destinationLng) };
+    const canAccept = me && !isMine && c.status === "open";
+    const canStart = me && (isMine || isOpponent) && (c.status === "accepted");
+    const canWatch = me && (isMine || isOpponent) && (c.status === "running");
+    const canForceFinish = me && (isMine || isOpponent) && (c.status === "running"); // NOVO
+    const canSeeResult = c.status === "finished";
 
-    // Botões de ação por estado
-    // 1) aceitar: só se aberto e não for meu
-    const acceptBtn = (c.status === "open" && me && !isMine)
-      ? `<button class="btn primary" data-action="accept" data-id="${c.id}">✅ Aceitar</button>`
+    const acceptBtn = canAccept ? `<button class="btn primary" data-action="accept" data-id="${c.id}">✅ Aceitar</button>` : "";
+    const startBtn = canStart ? `<button class="btn primary" data-action="start" data-id="${c.id}">🏁 Começar</button>` : "";
+    const watchBtn = canWatch ? `<button class="btn" data-action="watch" data-id="${c.id}">👀 Ver corrida</button>` : "";
+    const forceBtn = canForceFinish ? `<button class="btn danger" data-action="forcefinish" data-id="${c.id}">🏁 Finalizar agora</button>` : "";
+    const resultBtn = canSeeResult ? `<button class="btn" data-action="result" data-id="${c.id}">🏆 Resultado</button>` : "";
+
+    const acceptedInfo = (c.status === "open")
+      ? `<div class="rideMeta">Adversário: <b>—</b></div>`
+      : `<div class="rideMeta">Adversário: <b>${escapeHtml(c.acceptedByName || "—")}</b></div>`;
+
+    const winnerInfo = (c.status === "finished")
+      ? `<div class="rideMeta">Vencedor: <b>${escapeHtml(c.winnerName || "—")}</b></div>`
       : "";
-
-    // 2) iniciar: quando aceito, e só os 2 participantes podem iniciar
-    const canStart = (c.status === "accepted" && me && (isMine || isAcceptedByMe));
-    const startBtn = canStart
-      ? `<button class="btn primary" data-action="start" data-id="${c.id}">🏁 Iniciar</button>`
-      : "";
-
-    // 3) cheguei: quando correndo, só os 2 participantes
-    const canArrive = (c.status === "racing" && me && (isMine || isAcceptedByMe));
-    const arriveBtn = canArrive
-      ? `<button class="btn primary" data-action="arrive" data-id="${c.id}">📍 CHEGUEI</button>`
-      : "";
-
-    // 4) cancelar: só criador e só quando aberto (pra limpar desafio)
-    const cancelBtn = (c.status === "open" && me && isMine)
-      ? `<button class="btn danger" data-action="cancel" data-id="${c.id}">🛑 Cancelar</button>`
-      : "";
-
-    // Info de quem está participando
-    const creator = escapeHtml(c.createdByName || "—");
-    const accepter = escapeHtml(c.acceptedByName || "—");
 
     const div = document.createElement("div");
     div.className = "ride";
     div.innerHTML = `
       <div>
-        <div class="rideTitle">🏍️ Desafio 1x1</div>
-        <div class="rideMeta">Criador: <b>${creator}</b></div>
-        <div class="rideMeta">Adversário: <b>${accepter || "—"}</b></div>
-        <div class="rideMeta">Destino: <b>${escapeHtml(c.destinationName || "—")}</b></div>
-        <div class="rideMeta">Coord: <b>${dest.lat.toFixed(5)}, ${dest.lng.toFixed(5)}</b></div>
+        <div class="rideTitle">🏍️ Desafio</div>
+        <div class="rideMeta">Criador: <b>${escapeHtml(c.createdByName || "—")}</b></div>
+        ${acceptedInfo}
+        <div class="rideMeta">Destino: <b>${escapeHtml(c.destination || "—")}</b></div>
         <div class="rideMeta">${escapeHtml(fmtTime(c.createdAt))}</div>
+        ${winnerInfo}
       </div>
 
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-        <div class="tagsRow">
-          ${statusTag}
-          ${mineTag}
-          ${stakeTag}
-        </div>
-        <button class="btn ghost" data-action="zoom" data-id="${c.id}" data-lat="${dest.lat}" data-lng="${dest.lng}">🎯 Ver destino</button>
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
+        <div class="tagsRow">${statusTag}${mineTag}</div>
         ${acceptBtn}
         ${startBtn}
-        ${arriveBtn}
-        ${cancelBtn}
+        ${watchBtn}
+        ${forceBtn}
+        ${resultBtn}
       </div>
     `;
     challengesEl.appendChild(div);
-  }
-
-  // bind actions
-  challengesEl.querySelectorAll("button[data-action='zoom']").forEach(btn => {
-    btn.onclick = () => {
-      const lat = Number(btn.getAttribute("data-lat"));
-      const lng = Number(btn.getAttribute("data-lng"));
-      setDestinationOnMap({ lat, lng });
-      map.setView([lat, lng], 15);
-      openModal("Destino", `<p class="muted">Destino marcado no mapa 🎯</p>`);
-    };
   });
 
-  challengesEl.querySelectorAll("button[data-action='accept']").forEach(btn => {
-    btn.onclick = async () => await acceptChallenge(btn.getAttribute("data-id"));
+  challengesEl.querySelectorAll("button[data-action='accept']").forEach((b) => {
+    b.addEventListener("click", async () => acceptChallenge(b.getAttribute("data-id")));
   });
-
-  challengesEl.querySelectorAll("button[data-action='start']").forEach(btn => {
-    btn.onclick = async () => await startRace(btn.getAttribute("data-id"));
+  challengesEl.querySelectorAll("button[data-action='start']").forEach((b) => {
+    b.addEventListener("click", async () => startChallenge(b.getAttribute("data-id")));
   });
-
-  challengesEl.querySelectorAll("button[data-action='arrive']").forEach(btn => {
-    btn.onclick = async () => await arrive(btn.getAttribute("data-id"));
+  challengesEl.querySelectorAll("button[data-action='watch']").forEach((b) => {
+    b.addEventListener("click", async () => watchChallenge(b.getAttribute("data-id")));
   });
-
-  challengesEl.querySelectorAll("button[data-action='cancel']").forEach(btn => {
-    btn.onclick = async () => await cancelChallenge(btn.getAttribute("data-id"));
+  challengesEl.querySelectorAll("button[data-action='forcefinish']").forEach((b) => {
+    b.addEventListener("click", async () => forceFinishConfirm(b.getAttribute("data-id")));
+  });
+  challengesEl.querySelectorAll("button[data-action='result']").forEach((b) => {
+    b.addEventListener("click", async () => showResult(b.getAttribute("data-id")));
   });
 }
 
-// =================== ACTIONS ===================
 async function acceptChallenge(id){
-  const u = auth.currentUser;
-  if (!u) return openModal("Login", `<p class="muted">Entre com Google para aceitar.</p>`);
-
-  let myLoc;
-  try { myLoc = await getLocationOrAsk(); }
-  catch(e){ return openModal("Localização", `<p class="muted">Permita a localização.</p>`); }
+  const user = auth.currentUser;
+  if (!user) return openModal("Login", `<p class="muted">Entre com Google.</p>`);
 
   const ref = db.collection("challenges").doc(id);
 
-  try{
+  try {
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
       if (!snap.exists) throw new Error("Desafio não existe.");
       const c = snap.data();
 
       if (c.status !== "open") throw new Error("Esse desafio já foi aceito.");
-      if (c.createdByUid === u.uid) throw new Error("Você não pode aceitar seu próprio desafio.");
+      if (c.createdByUid === user.uid) throw new Error("Você não pode aceitar o seu próprio desafio.");
 
       tx.update(ref, {
         status: "accepted",
-        acceptedByUid: u.uid,
-        acceptedByName: u.displayName || "Sem nome",
-        acceptedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        originAccepterLat: myLoc.lat,
-        originAccepterLng: myLoc.lng
+        acceptedByUid: user.uid,
+        acceptedByName: user.displayName || "Sem nome",
+        acceptedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
     });
 
-    openModal("Aceito ✅", `<p class="muted">Agora os dois podem apertar <b>Iniciar</b>.</p>`);
-  }catch(e){
-    openModal("Erro", `<p class="muted">${escapeHtml(e?.message || String(e))}</p>`);
+    openModal("Aceito ✅", `<p class="muted">Agora vocês podem apertar <b>Começar</b>.</p>`);
+  } catch (e) {
+    openModal("Erro", `<p class="muted">${e?.message || e}</p>`);
   }
 }
 
-async function startRace(id){
-  const u = auth.currentUser;
-  if (!u) return openModal("Login", `<p class="muted">Entre com Google.</p>`);
+async function startChallenge(id){
+  const user = auth.currentUser;
+  if (!user) return openModal("Login", `<p class="muted">Entre com Google.</p>`);
 
   const ref = db.collection("challenges").doc(id);
 
-  try{
+  try {
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
       if (!snap.exists) throw new Error("Desafio não existe.");
       const c = snap.data();
 
-      const isCreator = c.createdByUid === u.uid;
-      const isAccepter = c.acceptedByUid === u.uid;
-      if (!isCreator && !isAccepter) throw new Error("Você não participa desse desafio.");
-      if (c.status !== "accepted") throw new Error("Só dá pra iniciar quando estiver ACEITO.");
+      if (c.status !== "accepted") throw new Error("Só dá pra começar quando estiver ACEITO.");
+
+      const can = (c.createdByUid === user.uid) || (c.acceptedByUid === user.uid);
+      if (!can) throw new Error("Sem permissão.");
+
+      const durCreator = randInt(25000, 60000);
+      const durOpp = randInt(25000, 60000);
 
       tx.update(ref, {
-        status: "racing",
-        startedAt: firebase.firestore.FieldValue.serverTimestamp()
+        status: "running",
+        startAt: firebase.firestore.FieldValue.serverTimestamp(),
+        durationMsCreator: durCreator,
+        durationMsOpponent: durOpp
       });
     });
 
-    openModal("Valendo! 🏁", `<p class="muted">Corrida iniciada. Vá até o destino e aperte <b>CHEGUEI</b>.</p>`);
-  }catch(e){
-    openModal("Erro", `<p class="muted">${escapeHtml(e?.message || String(e))}</p>`);
+    openModal("Valendo! 🏁", `<p class="muted">Corrida iniciada (simulador). Clique em <b>Ver corrida</b> ou <b>Finalizar agora</b>.</p>`);
+  } catch (e) {
+    openModal("Erro", `<p class="muted">${e?.message || e}</p>`);
   }
 }
 
-async function arrive(id){
-  const u = auth.currentUser;
-  if (!u) return openModal("Login", `<p class="muted">Entre com Google.</p>`);
+// =================== FINALIZAR MANUAL ===================
+async function forceFinishConfirm(id){
+  const user = auth.currentUser;
+  if (!user) return openModal("Login", `<p class="muted">Entre com Google.</p>`);
 
+  openModal(
+    "Finalizar agora?",
+    `
+      <p class="muted">Isso vai encerrar a corrida mesmo sem “chegar”.</p>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:12px;">
+        <button id="ff_me" class="btn primary">Eu ganhei</button>
+        <button id="ff_other" class="btn">Outro ganhou</button>
+        <button id="ff_cancel" class="btn ghost">Cancelar</button>
+      </div>
+    `
+  );
+
+  setTimeout(() => {
+    const meBtn = document.getElementById("ff_me");
+    const otherBtn = document.getElementById("ff_other");
+    const cancelBtn = document.getElementById("ff_cancel");
+
+    if (cancelBtn) cancelBtn.onclick = closeModal;
+
+    if (meBtn) meBtn.onclick = async () => {
+      closeModal();
+      await forceFinish(id, "me");
+    };
+    if (otherBtn) otherBtn.onclick = async () => {
+      closeModal();
+      await forceFinish(id, "other");
+    };
+  }, 0);
+}
+
+async function forceFinish(id, winnerPick){
+  const user = auth.currentUser;
   const ref = db.collection("challenges").doc(id);
 
-  // pega localização
-  let myLoc;
-  try { myLoc = await getLocationOrAsk(); }
-  catch(e){ return openModal("Localização", `<p class="muted">Permita a localização.</p>`); }
-
-  try{
+  try {
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
       if (!snap.exists) throw new Error("Desafio não existe.");
       const c = snap.data();
 
-      if (c.status !== "racing") throw new Error("Só dá pra marcar chegada quando estiver CORRENDO.");
+      if (c.status !== "running") throw new Error("Só dá pra finalizar quando estiver ROLANDO.");
 
-      const isCreator = c.createdByUid === u.uid;
-      const isAccepter = c.acceptedByUid === u.uid;
-      if (!isCreator && !isAccepter) throw new Error("Você não participa desse desafio.");
+      const isCreator = c.createdByUid === user.uid;
+      const isOpponent = c.acceptedByUid === user.uid;
+      if (!isCreator && !isOpponent) throw new Error("Sem permissão.");
 
-      const dest = { lat:Number(c.destinationLat), lng:Number(c.destinationLng) };
-      const ok = canGeofenceArrive(myLoc, dest, 150); // raio 150m
-      if (!ok) {
-        const dist = haversineMeters(myLoc, dest);
-        throw new Error(`Você ainda está longe do destino. Distância ~ ${Math.round(dist)}m`);
-      }
+      let winnerUid = null;
+      let winnerName = "—";
 
-      // marca chegada
-      const updates = {};
-      if (isCreator) {
-        if (c.arrivedCreatorAt) throw new Error("Você já marcou chegada.");
-        updates.arrivedCreatorAt = firebase.firestore.FieldValue.serverTimestamp();
+      if (winnerPick === "me") {
+        winnerUid = user.uid;
+        winnerName = user.displayName || "Sem nome";
       } else {
-        if (c.arrivedAccepterAt) throw new Error("Você já marcou chegada.");
-        updates.arrivedAccepterAt = firebase.firestore.FieldValue.serverTimestamp();
+        const otherUid = isCreator ? c.acceptedByUid : c.createdByUid;
+        const otherName = isCreator ? c.acceptedByName : c.createdByName;
+        if (!otherUid) throw new Error("Não tem adversário ainda.");
+        winnerUid = otherUid;
+        winnerName = otherName || "—";
       }
 
-      tx.update(ref, updates);
+      tx.update(ref, {
+        status: "finished",
+        manualFinishByUid: user.uid,
+        manualFinishReason: "manual_button",
+        winnerUid,
+        winnerName,
+        finishedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
     });
 
-    // depois da transação, tenta finalizar se alguém já chegou antes
-    await tryFinish(id);
-
-    openModal("Chegada registrada ✅", `<p class="muted">Se você foi o primeiro, você ganha.</p>`);
-  }catch(e){
-    openModal("Erro", `<p class="muted">${escapeHtml(e?.message || String(e))}</p>`);
+    openModal("Finalizado ✅", `<p class="muted">Corrida encerrada. Veja em <b>Resultado</b>.</p>`);
+  } catch (e) {
+    openModal("Erro", `<p class="muted">${e?.message || e}</p>`);
   }
 }
 
-async function tryFinish(id){
+// =================== “VER CORRIDA” (SIMULADOR) ===================
+let liveTimer = null;
+
+async function watchChallenge(id){
+  if (liveTimer) { clearInterval(liveTimer); liveTimer = null; }
+
   const ref = db.collection("challenges").doc(id);
-  await db.runTransaction(async (tx) => {
-    const snap = await tx.get(ref);
-    if (!snap.exists) return;
-    const c = snap.data();
 
-    if (c.status !== "racing") return;
-    if (!c.arrivedCreatorAt && !c.arrivedAccepterAt) return;
+  const snap = await ref.get();
+  if (!snap.exists) return openModal("Ops", `<p class="muted">Desafio não encontrado.</p>`);
+  const c = snap.data();
 
-    // se já tem winner, nada
-    if (c.winnerUid) return;
+  if (c.status !== "running") return openModal("Ainda não", `<p class="muted">Esse desafio não está rolando.</p>`);
 
-    // regra simples:
-    // - Se só um chegou: ele vence
-    // - Se os dois chegaram: quem tem arrivedAt menor vence (Firestore timestamp)
-    let winnerUid = null;
-    let winnerName = null;
+  const start = c.startAt?.toDate ? c.startAt.toDate().getTime() : Date.now();
+  const durA = Number(c.durationMsCreator || 40000);
+  const durB = Number(c.durationMsOpponent || 42000);
 
-    if (c.arrivedCreatorAt && !c.arrivedAccepterAt) {
-      winnerUid = c.createdByUid;
-      winnerName = c.createdByName || "Criador";
-    } else if (!c.arrivedCreatorAt && c.arrivedAccepterAt) {
-      winnerUid = c.acceptedByUid;
-      winnerName = c.acceptedByName || "Adversário";
-    } else if (c.arrivedCreatorAt && c.arrivedAccepterAt) {
-      // compara
-      const tC = c.arrivedCreatorAt.toMillis();
-      const tA = c.arrivedAccepterAt.toMillis();
-      if (tC <= tA) {
-        winnerUid = c.createdByUid;
-        winnerName = c.createdByName || "Criador";
-      } else {
-        winnerUid = c.acceptedByUid;
-        winnerName = c.acceptedByName || "Adversário";
-      }
+  openModal(
+    "Corrida ao vivo (simulador)",
+    `
+      <p class="muted">Destino: <b>${escapeHtml(c.destination || "")}</b></p>
+
+      <div style="margin-top:12px;">
+        <div class="rideMeta">Criador: <b>${escapeHtml(c.createdByName || "—")}</b></div>
+        <div class="progressWrap"><div id="barA" class="progressBar"></div></div>
+        <div class="rideMeta" id="txtA">0%</div>
+      </div>
+
+      <div style="margin-top:14px;">
+        <div class="rideMeta">Adversário: <b>${escapeHtml(c.acceptedByName || "—")}</b></div>
+        <div class="progressWrap"><div id="barB" class="progressBar"></div></div>
+        <div class="rideMeta" id="txtB">0%</div>
+      </div>
+
+      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;">
+        <button id="finishNow" class="btn danger">🏁 Finalizar agora</button>
+      </div>
+
+      <p class="tiny muted" style="margin-top:12px;">
+        *Simulador. Não depende de corrida real na rua.
+      </p>
+    `
+  );
+
+  // botão dentro do modal
+  setTimeout(() => {
+    const finishNow = document.getElementById("finishNow");
+    if (finishNow) finishNow.onclick = async () => {
+      closeModal();
+      await forceFinishConfirm(id);
+    };
+  }, 0);
+
+  const barA = document.getElementById("barA");
+  const barB = document.getElementById("barB");
+  const txtA = document.getElementById("txtA");
+  const txtB = document.getElementById("txtB");
+
+  liveTimer = setInterval(async () => {
+    const now = Date.now();
+    const pA = Math.min(1, (now - start) / durA);
+    const pB = Math.min(1, (now - start) / durB);
+
+    const pctA = Math.floor(pA * 100);
+    const pctB = Math.floor(pB * 100);
+
+    if (barA) barA.style.width = pctA + "%";
+    if (barB) barB.style.width = pctB + "%";
+    if (txtA) txtA.textContent = pctA + "%";
+    if (txtB) txtB.textContent = pctB + "%";
+
+    if (pA >= 1 || pB >= 1) {
+      clearInterval(liveTimer);
+      liveTimer = null;
+
+      const winnerIsCreator = durA <= durB;
+      await finishChallengeAuto(id, winnerIsCreator);
     }
-
-    if (!winnerUid) return;
-
-    tx.update(ref, {
-      status: "finished",
-      winnerUid,
-      winnerName,
-      finishedAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-  });
-
-  // avisa vencedor (best-effort)
-  try{
-    const snap = await db.collection("challenges").doc(id).get();
-    if (snap.exists){
-      const c = snap.data();
-      if (c?.status === "finished"){
-        openModal("Resultado 🏆", `
-          <p class="muted">Vencedor: <b>${escapeHtml(c.winnerName || "—")}</b></p>
-          <p class="muted">Aposta: <b>${Number(c.stakePoints||0)} pts</b></p>
-        `);
-      }
-    }
-  }catch(e){}
+  }, 350);
 }
 
-async function cancelChallenge(id){
-  const u = auth.currentUser;
-  if (!u) return openModal("Login", `<p class="muted">Entre com Google.</p>`);
-
+async function finishChallengeAuto(id, winnerIsCreator){
   const ref = db.collection("challenges").doc(id);
 
-  try{
+  try {
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
       if (!snap.exists) throw new Error("Desafio não existe.");
       const c = snap.data();
 
-      if (c.createdByUid !== u.uid) throw new Error("Só o criador pode cancelar.");
-      if (c.status !== "open") throw new Error("Só dá pra cancelar quando estiver ABERTO.");
+      if (c.status !== "running") return; // já finalizou
 
-      tx.update(ref, { status:"canceled", finishedAt: firebase.firestore.FieldValue.serverTimestamp() });
+      const winnerUid = winnerIsCreator ? c.createdByUid : c.acceptedByUid;
+      const winnerName = winnerIsCreator ? c.createdByName : c.acceptedByName;
+
+      tx.update(ref, {
+        status: "finished",
+        manualFinishByUid: null,
+        manualFinishReason: null,
+        winnerUid: winnerUid || null,
+        winnerName: winnerName || "—",
+        finishedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
     });
 
-    openModal("Cancelado", `<p class="muted">Desafio cancelado.</p>`);
-  }catch(e){
-    openModal("Erro", `<p class="muted">${escapeHtml(e?.message || String(e))}</p>`);
+    openModal("🏆 Resultado", `<p class="muted">A simulação terminou. Abra o card e clique em <b>Resultado</b>.</p>`);
+  } catch (e) {
+    openModal("Erro", `<p class="muted">${e?.message || e}</p>`);
   }
+}
+
+async function showResult(id){
+  const snap = await db.collection("challenges").doc(id).get();
+  if (!snap.exists) return openModal("Ops", `<p class="muted">Não achei esse desafio.</p>`);
+  const c = snap.data();
+
+  if (c.status !== "finished") return openModal("Ainda não", `<p class="muted">Esse desafio não terminou.</p>`);
+
+  const manual = c.manualFinishReason ? `<p class="muted small">Finalizado manualmente ✅</p>` : "";
+
+  openModal(
+    "🏆 Resultado do desafio",
+    `
+      <p class="muted">Destino: <b>${escapeHtml(c.destination || "")}</b></p>
+      <p class="muted">Criador: <b>${escapeHtml(c.createdByName || "—")}</b></p>
+      <p class="muted">Adversário: <b>${escapeHtml(c.acceptedByName || "—")}</b></p>
+      <hr style="border:none;border-top:1px solid rgba(255,255,255,.10);margin:12px 0;">
+      <p class="muted">Vencedor: <b>${escapeHtml(c.winnerName || "—")}</b></p>
+      ${manual}
+      <p class="muted small">Finalizado em: ${escapeHtml(fmtTime(c.finishedAt))}</p>
+    `
+  );
 }
