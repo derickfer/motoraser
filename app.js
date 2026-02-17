@@ -105,12 +105,13 @@ function initMap(){
   const fallback = { lat: -3.2041, lng: -52.2111 }; // Altamira
   map = L.map("map", { zoomControl: true }).setView([fallback.lat, fallback.lng], 13);
 
-  // 🔥 MAPA DARK PROFISSIONAL (ruas bem claras)
-L.tileLayer(
-  "https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png",
+  // ✅ MAPA ESCURO (sem API KEY) — CARTO Dark
+const darkTiles = L.tileLayer(
+  "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
   {
     maxZoom: 20,
-    attribution: '&copy; OpenStreetMap &copy; Stadia Maps'
+    attribution: '&copy; OpenStreetMap &copy; CARTO',
+    subdomains: "abcd",
   }
 ).addTo(map);
 }

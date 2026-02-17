@@ -197,3 +197,19 @@ input{
 .mapBox.isFullscreen #map{
   height:calc(100vh - 12px - 12px - 52px) !important; /* viewport - margens - topo */
 }
+/* =========================
+   MAPA DARK com RUAS MAIS CLARAS (CSS FILTER)
+   ========================= */
+#map .leaflet-tile {
+  filter: brightness(1.35) contrast(1.35) saturate(0.9);
+}
+
+/* melhora “nitidez” e reduz aquele cinza chapado */
+#map .leaflet-container {
+  background: #000;
+}
+
+/* se usar tela cheia, mantém o mapa certinho */
+.mapFullscreen #map {
+  height: 100% !important;
+}
