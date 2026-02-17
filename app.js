@@ -152,6 +152,71 @@ btnLocate.onclick = async () => {
   catch (e) { openModal("Localização", `<p class="muted">${escapeHtml(e?.message || String(e))}</p>`); }
 };
 
+/* ===========================
+   SELECIONAR DESTINO NO MAPA
+   =========================== */
+
+let pickingMode = false;
+let pickingMarker = null;
+let pickingCallback = null;
+
+function startPickOnMap(callback) {
+  pickingMode = true;
+  pickingCallback = callback;
+
+  mapInfo.textContent = "🎯 Clique no mapa para selecionar o DESTINO.";
+  const mapEl = document.getElementById("map");
+  if (mapEl) mapEl.style.cursor = "crosshair";
+
+  if (pickingMarker) {
+    map.removeLayer(pickingMarker);
+    pickingMarker = null;
+  }
+
+  openModal("Selecionar no mapa", `
+    <p class="muted">Clique no mapa para escolher o destino.</p>
+    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;">
+      <button id="btnStopPick" class="btn danger" type="button">Parar seleção</button>
+    </div>
+  `);
+
+  setTimeout(() => {
+    const btnStop = document.getElementById("btnStopPick");
+    if (btnStop) btnStop.onclick = stopPickOnMap;
+  }, 0);
+}
+
+function stopPickOnMap() {
+  pickingMode = false;
+  pickingCallback = null;
+
+  mapInfo.textContent = "Seleção encerrada.";
+  const mapEl = document.getElementById("map");
+  if (mapEl) mapEl.style.cursor = "";
+
+  closeModal();
+}
+
+// 1 clique no mapa = pega lat/lng
+map.on("click", (e) => {
+  if (!pickingMode) return;
+
+  const lat = e.latlng.lat;
+  const lng = e.latlng.lng;
+
+  if (pickingMarker) map.removeLayer(pickingMarker);
+  pickingMarker = L.marker([lat, lng]).addTo(map).bindPopup("Destino selecionado ✅").openPopup();
+
+  // marca destino "oficial" também
+  setDestinationOnMap({ lat, lng });
+
+  if (typeof pickingCallback === "function") {
+    pickingCallback({ lat, lng });
+  }
+
+  stopPickOnMap();
+});
+
 // =================== AUTH ===================
 btnLogin.onclick = async () => {
   try {
@@ -275,14 +340,19 @@ btnCreateChallenge.onclick = async () => {
       <input id="cDestName" placeholder="Ex: Orla do Xingu" />
     </label>
 
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin:10px 0">
+      <button id="btnPickMap" class="btn ghost" type="button">🗺️ Selecionar no mapa</button>
+      <button id="btnPickStop" class="btn ghost" type="button">❌ Sair da seleção</button>
+    </div>
+
     <label style="display:flex;flex-direction:column;gap:6px;margin:10px 0">
       <span class="muted">Destino (LAT)</span>
-      <input id="cLat" placeholder="-3.20410" />
+      <input id="cLat" placeholder="-3.20410" value="${lastDest?.lat ? Number(lastDest.lat).toFixed(6) : ""}" />
     </label>
 
     <label style="display:flex;flex-direction:column;gap:6px;margin:10px 0">
       <span class="muted">Destino (LNG)</span>
-      <input id="cLng" placeholder="-52.21110" />
+      <input id="cLng" placeholder="-52.21110" value="${lastDest?.lng ? Number(lastDest.lng).toFixed(6) : ""}" />
     </label>
 
     <label style="display:flex;flex-direction:column;gap:6px;margin:10px 0">
@@ -296,14 +366,36 @@ btnCreateChallenge.onclick = async () => {
     </div>
 
     <div class="tiny muted" style="margin-top:10px">
-      Dica: LAT/LNG você pega no mapa (depois eu te boto um seletor clicando no mapa).
+      Dica: Clique em “Selecionar no mapa” e toque no local do destino.
     </div>
   `);
 
   setTimeout(() => {
     const btnC = document.getElementById("cCreate");
     const btnX = document.getElementById("cCancel");
+    const btnPickMap = document.getElementById("btnPickMap");
+    const btnPickStop = document.getElementById("btnPickStop");
+
     btnX.onclick = closeModal;
+
+    btnPickStop.onclick = () => {
+      stopPickOnMap();
+      openModal("Seleção", `<p class="muted">Seleção encerrada.</p>`);
+    };
+
+    btnPickMap.onclick = () => {
+      closeModal();
+      startPickOnMap(({ lat, lng }) => {
+        // reabre o modal e preenche automático
+        btnCreateChallenge.onclick();
+        setTimeout(() => {
+          const latInput = document.getElementById("cLat");
+          const lngInput = document.getElementById("cLng");
+          if (latInput) latInput.value = lat.toFixed(6);
+          if (lngInput) lngInput.value = lng.toFixed(6);
+        }, 80);
+      });
+    };
 
     btnC.onclick = async () => {
       const destName = (document.getElementById("cDestName").value || "").trim();
@@ -327,12 +419,10 @@ btnCreateChallenge.onclick = async () => {
           acceptedByName: null,
           acceptedAt: null,
 
-          // destino único pros dois
           destinationName: destName,
           destinationLat: lat,
           destinationLng: lng,
 
-          // pontos de corrida
           startedAt: null,
 
           arrivedCreatorAt: null,
@@ -341,14 +431,14 @@ btnCreateChallenge.onclick = async () => {
           winnerName: null,
           finishedAt: null,
 
-          // manual finish
-          manualFinish: false,
-
           originCreatorLat: myLoc.lat,
           originCreatorLng: myLoc.lng,
           originAccepterLat: null,
           originAccepterLng: null
         });
+
+        // marca no mapa como destino oficial
+        setDestinationOnMap({ lat, lng });
 
         closeModal();
         openModal("Desafio criado ✅", `<p class="muted">Agora outro piloto pode aceitar.</p>`);
@@ -378,7 +468,6 @@ function renderChallenges(docs){
   for (const c of list){
     const isMine = me && c.createdByUid === me;
     const isAcceptedByMe = me && c.acceptedByUid === me;
-    const isParticipant = !!me && (isMine || isAcceptedByMe);
 
     const statusTag =
       c.status === "open" ? `<span class="tag open">Aberto</span>` :
@@ -390,30 +479,20 @@ function renderChallenges(docs){
 
     const dest = { lat:Number(c.destinationLat), lng:Number(c.destinationLng) };
 
-    // 1) aceitar: só se aberto e não for meu
     const acceptBtn = (c.status === "open" && me && !isMine)
       ? `<button class="btn primary" data-action="accept" data-id="${c.id}">✅ Aceitar</button>`
       : "";
 
-    // 2) iniciar: quando aceito, e só os 2 participantes podem iniciar
     const canStart = (c.status === "accepted" && me && (isMine || isAcceptedByMe));
     const startBtn = canStart
       ? `<button class="btn primary" data-action="start" data-id="${c.id}">🏁 Iniciar</button>`
       : "";
 
-    // 3) cheguei: quando correndo, só os 2 participantes
     const canArrive = (c.status === "racing" && me && (isMine || isAcceptedByMe));
     const arriveBtn = canArrive
       ? `<button class="btn primary" data-action="arrive" data-id="${c.id}">📍 CHEGUEI</button>`
       : "";
 
-    // ✅ 3.5) FINALIZAR MANUAL: quando correndo, só os 2 participantes
-    const canFinishManual = (c.status === "racing" && isParticipant);
-    const finishBtn = canFinishManual
-      ? `<button class="btn danger" data-action="finalizar-corrida" data-id="${c.id}">🏁 FINALIZAR</button>`
-      : "";
-
-    // 4) cancelar: só criador e só quando aberto
     const cancelBtn = (c.status === "open" && me && isMine)
       ? `<button class="btn danger" data-action="cancel" data-id="${c.id}">🛑 Cancelar</button>`
       : "";
@@ -443,14 +522,12 @@ function renderChallenges(docs){
         ${acceptBtn}
         ${startBtn}
         ${arriveBtn}
-        ${finishBtn}
         ${cancelBtn}
       </div>
     `;
     challengesEl.appendChild(div);
   }
 
-  // bind actions
   challengesEl.querySelectorAll("button[data-action='zoom']").forEach(btn => {
     btn.onclick = () => {
       const lat = Number(btn.getAttribute("data-lat"));
@@ -476,9 +553,6 @@ function renderChallenges(docs){
   challengesEl.querySelectorAll("button[data-action='cancel']").forEach(btn => {
     btn.onclick = async () => await cancelChallenge(btn.getAttribute("data-id"));
   });
-
-  // ✅ bind do finalizar manual
-  bindFinalizarCorridaBotoes(challengesEl);
 }
 
 // =================== ACTIONS ===================
@@ -540,7 +614,7 @@ async function startRace(id){
       });
     });
 
-    openModal("Valendo! 🏁", `<p class="muted">Corrida iniciada. Vá até o destino e aperte <b>CHEGUEI</b> (ou finalize manual).</p>`);
+    openModal("Valendo! 🏁", `<p class="muted">Corrida iniciada. Vá até o destino e aperte <b>CHEGUEI</b>.</p>`);
   }catch(e){
     openModal("Erro", `<p class="muted">${escapeHtml(e?.message || String(e))}</p>`);
   }
@@ -672,85 +746,4 @@ async function cancelChallenge(id){
   }catch(e){
     openModal("Erro", `<p class="muted">${escapeHtml(e?.message || String(e))}</p>`);
   }
-}
-
-/* ===========================
-   FINALIZAR CORRIDA (MANUAL)
-   =========================== */
-
-// Finaliza no Firebase com segurança (transaction)
-async function finalizarCorridaManual(challengeId) {
-  try {
-    const user = auth.currentUser;
-    if (!user) {
-      openModal("Login", `<p class="muted">Entre com Google para finalizar.</p>`);
-      return;
-    }
-
-    const ref = db.collection("challenges").doc(challengeId);
-
-    await db.runTransaction(async (tx) => {
-      const snap = await tx.get(ref);
-      if (!snap.exists) throw new Error("Corrida não existe.");
-
-      const c = snap.data() || {};
-
-      // ✅ seu app usa "racing"
-      if (c.status !== "racing") {
-        throw new Error("Só dá pra finalizar manualmente quando estiver CORRENDO.");
-      }
-
-      if (c.status === "finished") throw new Error("Essa corrida já foi finalizada.");
-
-      const isCreator = c.createdByUid === user.uid;
-      const isAccepter = c.acceptedByUid === user.uid;
-      if (!isCreator && !isAccepter) throw new Error("Você não participa desse desafio.");
-
-      tx.update(ref, {
-        status: "finished",
-        winnerUid: user.uid,
-        winnerName: user.displayName || "Sem nome",
-        finishedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        manualFinish: true
-      });
-    });
-
-    openModal("Finalizada ✅", `<p class="muted">Corrida finalizada manualmente.</p>`);
-  } catch (e) {
-    const msg = e?.message || String(e);
-    openModal("Erro", `<p class="muted">${escapeHtml(msg)}</p>`);
-  }
-}
-
-// Ativa cliques do botão (chame depois de renderizar a lista)
-function bindFinalizarCorridaBotoes(containerEl) {
-  if (!containerEl) return;
-
-  containerEl.querySelectorAll("[data-action='finalizar-corrida']").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const id = btn.getAttribute("data-id");
-      if (!id) return;
-
-      openModal(
-        "Finalizar corrida?",
-        `
-          <p class="muted">Tem certeza que deseja <b>FINALIZAR</b> agora?</p>
-          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;">
-            <button id="__yesFinish" class="btn danger" type="button">SIM, FINALIZAR</button>
-            <button id="__noFinish" class="btn ghost" type="button">Cancelar</button>
-          </div>
-        `
-      );
-
-      setTimeout(() => {
-        const yes = document.getElementById("__yesFinish");
-        const no = document.getElementById("__noFinish");
-        if (no) no.onclick = closeModal;
-        if (yes) yes.onclick = async () => {
-          closeModal();
-          await finalizarCorridaManual(id);
-        };
-      }, 0);
-    });
-  });
 }
