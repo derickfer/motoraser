@@ -107,21 +107,41 @@ function initMap(){
   const fallback = { lat: -3.2041, lng: -52.2111 }; // Altamira
   map = L.map("map", { zoomControl: true }).setView([fallback.lat, fallback.lng], 13);
 
-  // ✅ Tile DARK estável (CARTO) — sem token, sem “Invalid Authentication”
-  L.tileLayer(
+  // 1) ✅ TENTATIVA 1 (CARTO dark) — normalmente é a melhor
+  const cartoDark = L.tileLayer(
     "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
     {
       maxZoom: 20,
-      attribution: '&copy; OpenStreetMap &copy; CARTO',
       subdomains: "abcd",
+      attribution: "&copy; OpenStreetMap &copy; CARTO",
+      crossOrigin: true
     }
-  ).addTo(map);
+  );
 
-  // ✅ marcador do motorista (você)
-  meMarker = L.marker([fallback.lat, fallback.lng], { keyboard: false })
-    .addTo(map)
-    .bindPopup("Você");
+  // 2) ✅ FALLBACK 2 (OSM normal) — se o CARTO falhar, entra esse
+  const osmNormal = L.tileLayer(
+    "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap",
+      crossOrigin: true
+    }
+  );
 
+  // adiciona o primeiro
+  cartoDark.addTo(map);
+
+  // se der erro no tile, troca automaticamente pro OSM normal
+  cartoDark.on("tileerror", () => {
+    try {
+      map.removeLayer(cartoDark);
+      osmNormal.addTo(map);
+      if (mapInfo) mapInfo.textContent = "Mapa alternativo carregado ✅";
+    } catch(e){}
+  });
+
+  // marcador do motorista
+  meMarker = L.marker([fallback.lat, fallback.lng]).addTo(map).bindPopup("Você");
   destMarker = null;
 
   mapInfo.textContent = "Toque em “Minha localização”.";

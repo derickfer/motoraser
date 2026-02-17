@@ -236,9 +236,9 @@ input{
    ETAPA 1 — MAPA NEON
    ========================= */
 
-/* Deixa as ruas/pistas mais claras no mapa dark */
+/* clareia ruas SEM matar o mapa */
 #map .leaflet-tile{
-  filter: brightness(1.9) contrast(1.75) saturate(1.15);
+  filter: brightness(1.25) contrast(1.35) saturate(1.1);
 }
 
 /* Fundo bem preto pra destacar */
