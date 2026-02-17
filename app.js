@@ -890,3 +890,140 @@ async function cancelChallenge(id){
     openModal("Erro", `<p class="muted">${escapeHtml(e?.message || String(e))}</p>`);
   }
 }
+/* ===========================
+   ONLINE USERS (🟢)
+   =========================== */
+
+// coleção: presence
+// docId = uid
+const PRESENCE_COL = "presence";
+const ONLINE_TTL_MS = 60 * 1000; // considera online se pingou nos últimos 60s
+let presenceUnsub = null;
+let presenceInterval = null;
+
+// elemento da UI
+const onlineUsersEl = document.getElementById("onlineUsers");
+
+function renderOnlineUsers(list){
+  if (!onlineUsersEl) return;
+
+  if (!list.length) {
+    onlineUsersEl.innerHTML = `<div class="muted">Ninguém online agora.</div>`;
+    return;
+  }
+
+  onlineUsersEl.innerHTML = list.map(u => `
+    <div class="ride" style="display:flex;align-items:center;gap:10px;justify-content:space-between;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="width:10px;height:10px;border-radius:999px;background:#22c55e;display:inline-block;"></span>
+        <div>
+          <div class="rideTitle" style="margin:0;">${escapeHtml(u.name || "Sem nome")}</div>
+          <div class="rideMeta">${escapeHtml(u.city || "")}</div>
+        </div>
+      </div>
+      <div class="tiny muted">${u.lastSeenText || ""}</div>
+    </div>
+  `).join("");
+}
+
+async function setPresenceOnline(){
+  const u = auth.currentUser;
+  if (!u) return;
+
+  const ref = db.collection(PRESENCE_COL).doc(u.uid);
+  await ref.set({
+    uid: u.uid,
+    name: u.displayName || "Sem nome",
+    photoURL: u.photoURL || "",
+    online: true,
+    lastSeen: firebase.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+}
+
+async function setPresenceOffline(){
+  const u = auth.currentUser;
+  if (!u) return;
+
+  const ref = db.collection(PRESENCE_COL).doc(u.uid);
+  try{
+    await ref.set({
+      online: false,
+      lastSeen: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+  }catch(e){}
+}
+
+function startPresenceHeartbeat(){
+  stopPresenceHeartbeat();
+
+  // marca online agora
+  setPresenceOnline();
+
+  // ping a cada 25s
+  presenceInterval = setInterval(() => {
+    setPresenceOnline();
+  }, 25000);
+
+  // quando fechar aba tenta marcar offline
+  window.addEventListener("beforeunload", () => {
+    // best-effort
+    try { setPresenceOffline(); } catch(e){}
+  });
+
+  // quando trocar de aba (background), ainda pinga normal
+}
+
+function stopPresenceHeartbeat(){
+  if (presenceInterval) clearInterval(presenceInterval);
+  presenceInterval = null;
+}
+
+// escuta a lista de online
+function startPresenceListener(){
+  stopPresenceListener();
+  if (!onlineUsersEl) return;
+
+  presenceUnsub = db.collection(PRESENCE_COL)
+    .orderBy("lastSeen", "desc")
+    .limit(50)
+    .onSnapshot((snap) => {
+      const now = Date.now();
+
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .filter(p => {
+          // considerado online se:
+          // - online=true e ping recente (TTL)
+          const ts = p.lastSeen?.toDate ? p.lastSeen.toDate().getTime() : 0;
+          const fresh = (now - ts) <= ONLINE_TTL_MS;
+          return p.online === true && fresh;
+        })
+        .map(p => {
+          const ts = p.lastSeen?.toDate ? p.lastSeen.toDate() : null;
+          return {
+            ...p,
+            lastSeenText: ts ? ts.toLocaleTimeString() : ""
+          };
+        });
+
+      renderOnlineUsers(list);
+    }, (err) => {
+      if (onlineUsersEl) onlineUsersEl.innerHTML = `<div class="muted">Erro ao carregar online.</div>`;
+    });
+}
+
+function stopPresenceListener(){
+  if (presenceUnsub) presenceUnsub();
+  presenceUnsub = null;
+}
+
+// liga/desliga quando login muda
+auth.onAuthStateChanged((user) => {
+  if (user) {
+    startPresenceHeartbeat();
+    startPresenceListener();
+  } else {
+    stopPresenceHeartbeat();
+    stopPresenceListener();
+    renderOnlineUsers([]);
+  }
+});
