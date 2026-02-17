@@ -169,6 +169,9 @@ function setMyLocation(lat, lng){
 
   // atualiza rota se já tiver destino
   updateRouteIfReady();
+routeLayer = L.geoJSON(r.geometry, {
+  style: { weight: 5, opacity: 0.9 }
+}).addTo(map);
 
   // se tiver corrida ativa, tenta auto-chegada
   if (autoArriveActiveId) autoArriveTryMark(autoArriveActiveId);
