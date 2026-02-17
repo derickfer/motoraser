@@ -105,9 +105,16 @@ function initMap(){
   const fallback = { lat: -3.2041, lng: -52.2111 }; // Altamira
   map = L.map("map", { zoomControl: true }).setView([fallback.lat, fallback.lng], 13);
 
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution: "&copy; OpenStreetMap"
+    // ✅ MAPA DARK (sem labels)
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png", {
+    maxZoom: 20,
+    attribution: '&copy; OpenStreetMap &copy; CARTO'
+  }).addTo(map);
+
+  // ✅ LABELS claras por cima (ruas/nome)
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png", {
+    maxZoom: 20,
+    attribution: '&copy; OpenStreetMap &copy; CARTO'
   }).addTo(map);
 
   meMarker = L.marker([fallback.lat, fallback.lng]).addTo(map).bindPopup("Você");
@@ -116,6 +123,42 @@ function initMap(){
   mapInfo.textContent = "Ative a localização para iniciar.";
 }
 initMap();
+
+// =================== MAP FULLSCREEN ===================
+const btnMapFull = document.getElementById("btnMapFull");
+const mapBoxEl = document.getElementById("mapBox");
+
+function setMapFullscreen(on){
+  if (!mapBoxEl) return;
+
+  if (on) mapBoxEl.classList.add("isFullscreen");
+  else mapBoxEl.classList.remove("isFullscreen");
+
+  // importante pro Leaflet redesenhar
+  setTimeout(() => {
+    try { map.invalidateSize(true); } catch(e){}
+  }, 120);
+}
+
+function toggleMapFullscreen(){
+  if (!mapBoxEl) return;
+  const on = mapBoxEl.classList.contains("isFullscreen");
+  setMapFullscreen(!on);
+
+  if (btnMapFull) btnMapFull.textContent = on ? "⛶ Tela cheia" : "✖ Fechar";
+}
+
+if (btnMapFull){
+  btnMapFull.onclick = toggleMapFullscreen;
+}
+
+// ESC fecha
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && mapBoxEl?.classList.contains("isFullscreen")){
+    setMapFullscreen(false);
+    if (btnMapFull) btnMapFull.textContent = "⛶ Tela cheia";
+  }
+});
 
 function setMyLocation(lat, lng){
   lastLocation = { lat, lng };
@@ -1157,38 +1200,3 @@ function presenceListen(){
       if (onlineUsersEl) onlineUsersEl.innerHTML = `<div class="muted">Erro ao carregar online.</div>`;
     });
 }
-// =================== MAP FULLSCREEN ===================
-const btnMapFull = document.getElementById("btnMapFull");
-const mapBoxEl = document.getElementById("mapBox");
-
-function setMapFullscreen(on){
-  if (!mapBoxEl) return;
-
-  if (on) mapBoxEl.classList.add("isFullscreen");
-  else mapBoxEl.classList.remove("isFullscreen");
-
-  // importante pro Leaflet redesenhar
-  setTimeout(() => {
-    try { map.invalidateSize(true); } catch(e){}
-  }, 120);
-}
-
-function toggleMapFullscreen(){
-  if (!mapBoxEl) return;
-  const on = mapBoxEl.classList.contains("isFullscreen");
-  setMapFullscreen(!on);
-
-  if (btnMapFull) btnMapFull.textContent = on ? "⛶ Tela cheia" : "✖ Fechar";
-}
-
-if (btnMapFull){
-  btnMapFull.onclick = toggleMapFullscreen;
-}
-
-// ESC fecha
-window.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && mapBoxEl?.classList.contains("isFullscreen")){
-    setMapFullscreen(false);
-    if (btnMapFull) btnMapFull.textContent = "⛶ Tela cheia";
-  }
-});
