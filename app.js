@@ -98,6 +98,8 @@ async function loadUserDoc(uid){
 let map, meMarker, destMarker;
 let lastLocation = null;
 let lastDest = null;
+let lastDestName = "";          // ✅ nome automático do destino
+let routeLayer = null;          // ✅ linha/rota no mapa
 
 function initMap(){
   // Altamira fallback
@@ -122,12 +124,18 @@ function setMyLocation(lat, lng){
   map.setView([lat, lng], 15);
   locStatus.textContent = `Localização: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
   mapInfo.textContent = "Localização OK ✅";
+
+  // ✅ atualiza rota se já tiver destino
+  updateRouteIfReady();
 }
 
 function setDestinationOnMap(dest){
   lastDest = dest;
   if (destMarker) { map.removeLayer(destMarker); destMarker = null; }
   destMarker = L.marker([dest.lat, dest.lng]).addTo(map).bindPopup("Destino");
+
+  // ✅ atualiza rota se já tiver localização
+  updateRouteIfReady();
 }
 
 async function getLocationOrAsk(){
@@ -152,10 +160,100 @@ btnLocate.onclick = async () => {
   catch (e) { openModal("Localização", `<p class="muted">${escapeHtml(e?.message || String(e))}</p>`); }
 };
 
-/* ===========================
-   SELECIONAR DESTINO NO MAPA
-   =========================== */
+// ===========================
+// ✅ REVERSE GEOCODE (nome do lugar) - Nominatim
+// ===========================
+async function reverseGeocodeOSM(lat, lng){
+  // Nominatim: uso leve para demo
+  const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&zoom=18&addressdetails=1`;
+  const resp = await fetch(url, {
+    headers: {
+      "Accept": "application/json",
+      "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.6"
+    }
+  });
 
+  if (!resp.ok) throw new Error("Não foi possível pegar o nome do local (OSM).");
+  const data = await resp.json();
+
+  // tenta montar um nome mais “curto” e bonito
+  const addr = data.address || {};
+  const best =
+    data.name ||
+    addr.attraction ||
+    addr.amenity ||
+    addr.shop ||
+    addr.road ||
+    addr.neighbourhood ||
+    addr.suburb ||
+    addr.city ||
+    addr.town ||
+    addr.village ||
+    data.display_name ||
+    "";
+
+  return String(best).trim();
+}
+
+// ===========================
+// ✅ ROTAS (linha no mapa) - OSRM
+// ===========================
+async function fetchRouteOSRM(from, to){
+  // OSRM precisa de "lon,lat"
+  const url = `https://router.project-osrm.org/route/v1/driving/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson&steps=false`;
+  const resp = await fetch(url, { headers: { "Accept": "application/json" } });
+  if (!resp.ok) throw new Error("Falha ao buscar rota (OSRM).");
+  const data = await resp.json();
+
+  const route = data?.routes?.[0];
+  if (!route?.geometry) throw new Error("Rota não encontrada.");
+
+  return {
+    geometry: route.geometry,                 // GeoJSON LineString
+    distance: route.distance || 0,
+    duration: route.duration || 0
+  };
+}
+
+function clearRoute(){
+  if (routeLayer) {
+    map.removeLayer(routeLayer);
+    routeLayer = null;
+  }
+}
+
+async function updateRouteIfReady(){
+  if (!lastLocation || !lastDest) return;
+
+  // desenha rota (best-effort)
+  try{
+    mapInfo.textContent = "Calculando rota...";
+    const r = await fetchRouteOSRM(lastLocation, lastDest);
+
+    clearRoute();
+
+    // desenha GeoJSON
+    routeLayer = L.geoJSON(r.geometry, {
+      style: { weight: 5, opacity: 0.9 }
+    }).addTo(map);
+
+    // ajusta zoom para caber tudo
+    const bounds = routeLayer.getBounds();
+    if (bounds && bounds.isValid()) map.fitBounds(bounds.pad(0.2));
+
+    // info simples
+    const km = (r.distance / 1000).toFixed(2);
+    const min = Math.max(1, Math.round(r.duration / 60));
+    mapInfo.textContent = `Rota: ${km} km • ~${min} min ✅`;
+  }catch(e){
+    // não quebra nada se rota falhar
+    mapInfo.textContent = "Rota indisponível (ok para demo).";
+  }
+}
+
+/* ===========================
+   ✅ SELECIONAR DESTINO NO MAPA (CLICK)
+   =========================== */
 let pickingMode = false;
 let pickingMarker = null;
 let pickingCallback = null;
@@ -197,8 +295,8 @@ function stopPickOnMap() {
   closeModal();
 }
 
-// 1 clique no mapa = pega lat/lng
-map.on("click", (e) => {
+// 1 clique no mapa = pega lat/lng + nome automático + rota
+map.on("click", async (e) => {
   if (!pickingMode) return;
 
   const lat = e.latlng.lat;
@@ -207,11 +305,20 @@ map.on("click", (e) => {
   if (pickingMarker) map.removeLayer(pickingMarker);
   pickingMarker = L.marker([lat, lng]).addTo(map).bindPopup("Destino selecionado ✅").openPopup();
 
-  // marca destino "oficial" também
+  // marca destino "oficial"
   setDestinationOnMap({ lat, lng });
 
+  // tenta pegar nome automático
+  try{
+    mapInfo.textContent = "Buscando nome do local...";
+    const place = await reverseGeocodeOSM(lat, lng);
+    lastDestName = place || "";
+  }catch(err){
+    lastDestName = "";
+  }
+
   if (typeof pickingCallback === "function") {
-    pickingCallback({ lat, lng });
+    pickingCallback({ lat, lng, name: lastDestName });
   }
 
   stopPickOnMap();
@@ -337,12 +444,14 @@ btnCreateChallenge.onclick = async () => {
 
     <label style="display:flex;flex-direction:column;gap:6px;margin:10px 0">
       <span class="muted">Destino (nome)</span>
-      <input id="cDestName" placeholder="Ex: Orla do Xingu" />
+      <input id="cDestName" placeholder="Ex: Orla do Xingu"
+        value="${escapeHtml(lastDestName || "")}" />
     </label>
 
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin:10px 0">
       <button id="btnPickMap" class="btn ghost" type="button">🗺️ Selecionar no mapa</button>
       <button id="btnPickStop" class="btn ghost" type="button">❌ Sair da seleção</button>
+      <button id="btnClearRoute" class="btn ghost" type="button">🧹 Limpar rota</button>
     </div>
 
     <label style="display:flex;flex-direction:column;gap:6px;margin:10px 0">
@@ -366,7 +475,7 @@ btnCreateChallenge.onclick = async () => {
     </div>
 
     <div class="tiny muted" style="margin-top:10px">
-      Dica: Clique em “Selecionar no mapa” e toque no local do destino.
+      Dica: clique em “Selecionar no mapa” e toque no destino. O nome e a rota vão aparecer.
     </div>
   `);
 
@@ -375,6 +484,7 @@ btnCreateChallenge.onclick = async () => {
     const btnX = document.getElementById("cCancel");
     const btnPickMap = document.getElementById("btnPickMap");
     const btnPickStop = document.getElementById("btnPickStop");
+    const btnClearRoute = document.getElementById("btnClearRoute");
 
     btnX.onclick = closeModal;
 
@@ -383,17 +493,31 @@ btnCreateChallenge.onclick = async () => {
       openModal("Seleção", `<p class="muted">Seleção encerrada.</p>`);
     };
 
+    btnClearRoute.onclick = () => {
+      clearRoute();
+      openModal("Rota", `<p class="muted">Rota removida do mapa.</p>`);
+    };
+
     btnPickMap.onclick = () => {
       closeModal();
-      startPickOnMap(({ lat, lng }) => {
-        // reabre o modal e preenche automático
+      startPickOnMap(({ lat, lng, name }) => {
+        // reabre modal já preenchido
         btnCreateChallenge.onclick();
+
         setTimeout(() => {
           const latInput = document.getElementById("cLat");
           const lngInput = document.getElementById("cLng");
+          const nameInput = document.getElementById("cDestName");
+
           if (latInput) latInput.value = lat.toFixed(6);
           if (lngInput) lngInput.value = lng.toFixed(6);
-        }, 80);
+
+          // ✅ nome automático
+          if (nameInput && name) nameInput.value = name;
+
+          // ✅ tenta desenhar rota (se já tiver localização)
+          updateRouteIfReady();
+        }, 120);
       });
     };
 
@@ -437,8 +561,10 @@ btnCreateChallenge.onclick = async () => {
           originAccepterLng: null
         });
 
-        // marca no mapa como destino oficial
+        // guarda para o próximo modal
+        lastDestName = destName;
         setDestinationOnMap({ lat, lng });
+        updateRouteIfReady();
 
         closeModal();
         openModal("Desafio criado ✅", `<p class="muted">Agora outro piloto pode aceitar.</p>`);
@@ -519,6 +645,7 @@ function renderChallenges(docs){
           ${stakeTag}
         </div>
         <button class="btn ghost" data-action="zoom" data-id="${c.id}" data-lat="${dest.lat}" data-lng="${dest.lng}">🎯 Ver destino</button>
+        <button class="btn ghost" data-action="route" data-id="${c.id}" data-lat="${dest.lat}" data-lng="${dest.lng}">🧭 Rota</button>
         ${acceptBtn}
         ${startBtn}
         ${arriveBtn}
@@ -535,6 +662,22 @@ function renderChallenges(docs){
       setDestinationOnMap({ lat, lng });
       map.setView([lat, lng], 15);
       openModal("Destino", `<p class="muted">Destino marcado no mapa 🎯</p>`);
+    };
+  });
+
+  // ✅ botão rota na lista
+  challengesEl.querySelectorAll("button[data-action='route']").forEach(btn => {
+    btn.onclick = async () => {
+      try{
+        await getLocationOrAsk();
+        const lat = Number(btn.getAttribute("data-lat"));
+        const lng = Number(btn.getAttribute("data-lng"));
+        setDestinationOnMap({ lat, lng });
+        await updateRouteIfReady();
+        openModal("Rota ✅", `<p class="muted">Rota desenhada no mapa.</p>`);
+      }catch(e){
+        openModal("Erro", `<p class="muted">${escapeHtml(e?.message || String(e))}</p>`);
+      }
     };
   });
 
