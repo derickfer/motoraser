@@ -94,116 +94,112 @@ async function loadUserDoc(uid){
   return snap.exists ? (snap.data() || {}) : null;
 }
 
-// =================== MAPA (Leaflet) ===================
+// =================== MAP (Leaflet) ===================
 let map, meMarker, destMarker;
 let lastLocation = null;
 let lastDest = null;
 let lastDestName = "";
 let routeLayer = null;
 
-let baseLayer = null;
+// picking
+let pickingMode = false;
+let pickingMarker = null;
+let pickingCallback = null;
 
 function initMap(){
   const fallback = { lat: -3.2041, lng: -52.2111 }; // Altamira
+
+  // ✅ garante que Leaflet carregou
+  if (typeof L === "undefined") {
+    console.error("Leaflet (L) não carregou. Verifique o <script> do leaflet no index.html");
+    if (mapInfo) mapInfo.textContent = "Erro: Leaflet não carregou.";
+    return;
+  }
+
   map = L.map("map", { zoomControl: true }).setView([fallback.lat, fallback.lng], 13);
 
-  // 1) ✅ TENTATIVA 1 (CARTO dark) — normalmente é a melhor
+  // ✅ Tiles (dark) + fallback (normal) — e SEM quebrar se der erro
   const cartoDark = L.tileLayer(
     "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-    {
-      maxZoom: 20,
-      subdomains: "abcd",
-      attribution: "&copy; OpenStreetMap &copy; CARTO",
-      crossOrigin: true
-    }
+    { maxZoom: 20, subdomains: "abcd", attribution: "&copy; OpenStreetMap &copy; CARTO" }
   );
 
-  // 2) ✅ FALLBACK 2 (OSM normal) — se o CARTO falhar, entra esse
   const osmNormal = L.tileLayer(
     "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-    {
-      maxZoom: 19,
-      attribution: "&copy; OpenStreetMap",
-      crossOrigin: true
-    }
+    { maxZoom: 19, attribution: "&copy; OpenStreetMap" }
   );
 
-  // adiciona o primeiro
+  // adiciona o dark primeiro
   cartoDark.addTo(map);
 
-  // se der erro no tile, troca automaticamente pro OSM normal
+  // ✅ se o dark falhar, troca pro OSM normal
   cartoDark.on("tileerror", () => {
     try {
-      map.removeLayer(cartoDark);
-      osmNormal.addTo(map);
+      if (map.hasLayer(cartoDark)) map.removeLayer(cartoDark);
+      if (!map.hasLayer(osmNormal)) osmNormal.addTo(map);
       if (mapInfo) mapInfo.textContent = "Mapa alternativo carregado ✅";
-    } catch(e){}
+    } catch (e) {
+      console.warn("Falha ao trocar tile:", e);
+    }
   });
 
-  // marcador do motorista
   meMarker = L.marker([fallback.lat, fallback.lng]).addTo(map).bindPopup("Você");
   destMarker = null;
 
-  mapInfo.textContent = "Toque em “Minha localização”.";
+  if (mapInfo) mapInfo.textContent = "Toque em “Minha localização”.";
+
+  // ✅ IMPORTANTÍSSIMO: o click do mapa fica aqui dentro (map já existe)
+  map.on("click", async (e) => {
+    if (!pickingMode) return;
+
+    const lat = e.latlng.lat;
+    const lng = e.latlng.lng;
+
+    if (pickingMarker) map.removeLayer(pickingMarker);
+    pickingMarker = L.marker([lat, lng]).addTo(map).bindPopup("Destino selecionado ✅").openPopup();
+
+    setDestinationOnMap({ lat, lng });
+
+    // tenta nome automático (se sua função existir)
+    try{
+      if (typeof reverseGeocodeOSM === "function") {
+        if (mapInfo) mapInfo.textContent = "Buscando nome do local...";
+        const place = await reverseGeocodeOSM(lat, lng);
+        lastDestName = place || "";
+      }
+    }catch(err){
+      lastDestName = "";
+    }
+
+    if (typeof pickingCallback === "function") {
+      pickingCallback({ lat, lng, name: lastDestName });
+    }
+
+    stopPickOnMap();
+  });
 }
 
-// =================== MAP FULLSCREEN ===================
-const btnMapFull = document.getElementById("btnMapFull");
-const mapBoxEl = document.getElementById("mapBox");
-
-function setMapFullscreen(on){
-  if (!mapBoxEl) return;
-
-  if (on) mapBoxEl.classList.add("isFullscreen");
-  else mapBoxEl.classList.remove("isFullscreen");
-
-  // importante pro Leaflet redesenhar
-  setTimeout(() => {
-    try { map.invalidateSize(true); } catch(e){}
-  }, 120);
-}
-
-function toggleMapFullscreen(){
-  if (!mapBoxEl) return;
-  const on = mapBoxEl.classList.contains("isFullscreen");
-  setMapFullscreen(!on);
-
-  if (btnMapFull) btnMapFull.textContent = on ? "⛶ Tela cheia" : "✖ Fechar";
-}
-
-if (btnMapFull){
-  btnMapFull.onclick = toggleMapFullscreen;
-}
-
-// ESC fecha
-window.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && mapBoxEl?.classList.contains("isFullscreen")){
-    setMapFullscreen(false);
-    if (btnMapFull) btnMapFull.textContent = "⛶ Tela cheia";
-  }
-});
+// chama o mapa
+initMap();
 
 function setMyLocation(lat, lng){
   lastLocation = { lat, lng };
-  meMarker.setLatLng([lat, lng]);
-  map.setView([lat, lng], 15);
-  locStatus.textContent = `Localização: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-  mapInfo.textContent = "Localização OK ✅";
+  if (meMarker) meMarker.setLatLng([lat, lng]);
+  if (map) map.setView([lat, lng], 15);
+  if (locStatus) locStatus.textContent = `Localização: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  if (mapInfo) mapInfo.textContent = "Localização OK ✅";
 
-  // atualiza rota se já tiver destino
   updateRouteIfReady();
-  // se tiver corrida ativa, tenta auto-chegada
-  if (autoArriveActiveId) autoArriveTryMark(autoArriveActiveId);
 }
 
 function setDestinationOnMap(dest){
   lastDest = dest;
+  if (!map) return;
+
   if (destMarker) { map.removeLayer(destMarker); destMarker = null; }
   destMarker = L.marker([dest.lat, dest.lng]).addTo(map).bindPopup("Destino");
+
   updateRouteIfReady();
-  routeLayer = L.geoJSON(r.geometry, {
-  style: { weight: 6, opacity: 0.95 }
-}).addTo(map);
 }
 
 async function getLocationOrAsk(){
@@ -211,7 +207,8 @@ async function getLocationOrAsk(){
 
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) return reject(new Error("Sem geolocalização no navegador."));
-    mapInfo.textContent = "Pegando localização...";
+    if (mapInfo) mapInfo.textContent = "Pegando localização...";
+
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setMyLocation(pos.coords.latitude, pos.coords.longitude);
@@ -223,193 +220,21 @@ async function getLocationOrAsk(){
   });
 }
 
+// botão localização
 btnLocate.onclick = async () => {
   try { await getLocationOrAsk(); }
   catch (e) { openModal("Localização", `<p class="muted">${escapeHtml(e?.message || String(e))}</p>`); }
 };
 
 // ===========================
-// REVERSE GEOCODE (Nominatim)
+// SELECIONAR DESTINO NO MAPA
 // ===========================
-async function reverseGeocodeOSM(lat, lng){
-  const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&zoom=18&addressdetails=1`;
-  const resp = await fetch(url, {
-    headers: {
-      "Accept": "application/json",
-      "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.6"
-    }
-  });
-
-  if (!resp.ok) throw new Error("Não foi possível pegar o nome do local (OSM).");
-  const data = await resp.json();
-
-  const addr = data.address || {};
-  const best =
-    data.name ||
-    addr.attraction ||
-    addr.amenity ||
-    addr.shop ||
-    addr.road ||
-    addr.neighbourhood ||
-    addr.suburb ||
-    addr.city ||
-    addr.town ||
-    addr.village ||
-    data.display_name ||
-    "";
-
-  return String(best).trim();
-}
-
-// ===========================
-// ROTAS (OSRM)
-// ===========================
-async function fetchRouteOSRM(from, to){
-  const url = `https://router.project-osrm.org/route/v1/driving/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson&steps=false`;
-  const resp = await fetch(url, { headers: { "Accept": "application/json" } });
-  if (!resp.ok) throw new Error("Falha ao buscar rota (OSRM).");
-  const data = await resp.json();
-
-  const route = data?.routes?.[0];
-  if (!route?.geometry) throw new Error("Rota não encontrada.");
-
-  return {
-    geometry: route.geometry,
-    distance: route.distance || 0,
-    duration: route.duration || 0
-  };
-}
-
-function clearRoute(){
-  if (routeLayer) {
-    map.removeLayer(routeLayer);
-    routeLayer = null;
-  }
-}
-
-async function updateRouteIfReady(){
-  if (!lastLocation || !lastDest) return;
-
-  try{
-    mapInfo.textContent = "Calculando rota...";
-    const r = await fetchRouteOSRM(lastLocation, lastDest);
-
-    clearRoute();
-
-    routeLayer = L.geoJSON(r.geometry, {
-      style: { weight: 5, opacity: 0.9 }
-    }).addTo(map);
-
-    const bounds = routeLayer.getBounds();
-    if (bounds && bounds.isValid()) map.fitBounds(bounds.pad(0.2));
-
-    const km = (r.distance / 1000).toFixed(2);
-    const min = Math.max(1, Math.round(r.duration / 60));
-    mapInfo.textContent = `Rota: ${km} km • ~${min} min ✅`;
-  }catch(e){
-    mapInfo.textContent = "Rota indisponível (ok para demo).";
-  }
-}
-
-/* ===========================
-   ✅ GPS AO VIVO + CHEGADA AUTOMÁTICA (SEM BOTÃO)
-   - Move o ponto do motorista no mapa (watchPosition)
-   - Quando entrar no raio do destino (100m), marca chegada no Firestore
-   =========================== */
-
-const AUTO_ARRIVE_RADIUS_M = 100;      // ✅ seu raio
-const AUTO_ARRIVE_COOLDOWN_MS = 6000;  // evita spam
-
-let gpsWatchId = null;
-let autoArriveActiveId = null;
-let autoArriveLastTry = 0;
-
-function startGpsWatch() {
-  if (gpsWatchId != null) return;
-  if (!navigator.geolocation) return;
-
-  gpsWatchId = navigator.geolocation.watchPosition(
-    (pos) => {
-      setMyLocation(pos.coords.latitude, pos.coords.longitude);
-    },
-    (err) => {
-      console.warn("GPS watch error:", err);
-    },
-    { enableHighAccuracy: true, maximumAge: 0, timeout: 12000 }
-  );
-}
-function stopGpsWatch() {
-  if (gpsWatchId == null) return;
-  try { navigator.geolocation.clearWatch(gpsWatchId); } catch(e){}
-  gpsWatchId = null;
-}
-
-async function autoArriveTryMark(challengeId) {
-  const u = auth.currentUser;
-  if (!u) return;
-
-  const now = Date.now();
-  if (now - autoArriveLastTry < AUTO_ARRIVE_COOLDOWN_MS) return;
-  autoArriveLastTry = now;
-
-  let myLoc;
-  try { myLoc = await getLocationOrAsk(); } catch(e){ return; }
-
-  const ref = db.collection("challenges").doc(challengeId);
-
-  try {
-    await db.runTransaction(async (tx) => {
-      const snap = await tx.get(ref);
-      if (!snap.exists) return;
-      const c = snap.data();
-
-      if (c.status !== "racing") return;
-
-      const isCreator = c.createdByUid === u.uid;
-      const isAccepter = c.acceptedByUid === u.uid;
-      if (!isCreator && !isAccepter) return;
-
-      // já marcou?
-      if (isCreator && c.arrivedCreatorAt) return;
-      if (isAccepter && c.arrivedAccepterAt) return;
-
-      const dest = { lat: Number(c.destinationLat), lng: Number(c.destinationLng) };
-      const ok = canGeofenceArrive(myLoc, dest, AUTO_ARRIVE_RADIUS_M);
-      if (!ok) return;
-
-      const updates = {};
-      if (isCreator) updates.arrivedCreatorAt = firebase.firestore.FieldValue.serverTimestamp();
-      if (isAccepter) updates.arrivedAccepterAt = firebase.firestore.FieldValue.serverTimestamp();
-
-      tx.update(ref, updates);
-    });
-
-    await tryFinish(challengeId);
-  } catch (e) {
-    console.warn("Auto-arrive fail:", e?.message || e);
-  }
-}
-
-function enableAutoArriveForChallenge(challengeId) {
-  autoArriveActiveId = challengeId;
-}
-
-function disableAutoArrive() {
-  autoArriveActiveId = null;
-}
-
-/* ===========================
-   SELECIONAR DESTINO NO MAPA
-   =========================== */
-let pickingMode = false;
-let pickingMarker = null;
-let pickingCallback = null;
-
 function startPickOnMap(callback) {
+  if (!map) return openModal("Mapa", `<p class="muted">Mapa ainda não carregou.</p>`);
   pickingMode = true;
   pickingCallback = callback;
 
-  mapInfo.textContent = "🎯 Clique no mapa para selecionar o DESTINO.";
+  if (mapInfo) mapInfo.textContent = "🎯 Clique no mapa para selecionar o DESTINO.";
   const mapEl = document.getElementById("map");
   if (mapEl) mapEl.style.cursor = "crosshair";
 
@@ -435,7 +260,7 @@ function stopPickOnMap() {
   pickingMode = false;
   pickingCallback = null;
 
-  mapInfo.textContent = "Seleção encerrada.";
+  if (mapInfo) mapInfo.textContent = "Seleção encerrada.";
   const mapEl = document.getElementById("map");
   if (mapEl) mapEl.style.cursor = "";
 
