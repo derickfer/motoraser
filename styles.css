@@ -219,7 +219,7 @@ input{
 
 /* Clareia os tiles e puxa contraste (deixa rua/pista aparecer mais) */
 #map .leaflet-tile {
-  filter: brightness(3.75) contrast(1.6) saturate(1.05);
+  filter: brightness(5.00) contrast(3.6) saturate(2.05);
 }
 
 /* Remove aquele “cinza lavado” do fundo */
@@ -232,4 +232,5 @@ input{
   stroke-width: 6 !important;
   filter: drop-shadow(0 2px 10px rgba(0,0,0,.6));
 }
+
 
