@@ -105,17 +105,11 @@ function initMap(){
   const fallback = { lat: -3.2041, lng: -52.2111 }; // Altamira
   map = L.map("map", { zoomControl: true }).setView([fallback.lat, fallback.lng], 13);
 
-    // ✅ MAPA DARK (sem labels)
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png", {
-    maxZoom: 20,
-    attribution: '&copy; OpenStreetMap &copy; CARTO'
-  }).addTo(map);
-
-  // ✅ LABELS claras por cima (ruas/nome)
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png", {
-    maxZoom: 20,
-    attribution: '&copy; OpenStreetMap &copy; CARTO'
-  }).addTo(map);
+  // ✅ MAPA DARK com RUAS/PISTAS bem visíveis
+L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+  maxZoom: 20,
+  attribution: '&copy; OpenStreetMap &copy; CARTO'
+}).addTo(map);
 
   meMarker = L.marker([fallback.lat, fallback.lng]).addTo(map).bindPopup("Você");
   destMarker = null;
