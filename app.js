@@ -94,27 +94,36 @@ async function loadUserDoc(uid){
   return snap.exists ? (snap.data() || {}) : null;
 }
 
-// =================== MAP (Leaflet) ===================
+// =================== MAPA (Leaflet) ===================
 let map, meMarker, destMarker;
 let lastLocation = null;
 let lastDest = null;
 let lastDestName = "";
 let routeLayer = null;
 
+let baseLayer = null;
+
 function initMap(){
   const fallback = { lat: -3.2041, lng: -52.2111 }; // Altamira
   map = L.map("map", { zoomControl: true }).setView([fallback.lat, fallback.lng], 13);
 
-  // ✅ MAPA ESCURO (sem API KEY) — CARTO Dark
-const darkTiles = L.tileLayer(
-  "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-  {
-    maxZoom: 20,
-    attribution: '&copy; OpenStreetMap &copy; CARTO',
-    subdomains: "abcd",
-  }
-).addTo(map);
+  // ✅ DARK com RUAS mais visíveis (Carto "dark_nolabels" + a gente clareia com CSS)
+  baseLayer = L.tileLayer(
+    "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png",
+    {
+      maxZoom: 20,
+      attribution: '&copy; OpenStreetMap &copy; CARTO',
+      subdomains: "abcd",
+    }
+  ).addTo(map);
+
+  meMarker = L.marker([fallback.lat, fallback.lng]).addTo(map).bindPopup("Você");
+  destMarker = null;
+
+  const mapInfo = document.getElementById("mapInfo");
+  if (mapInfo) mapInfo.textContent = "Toque em “Minha localização”.";
 }
+
 initMap();
 
 // =================== MAP FULLSCREEN ===================
