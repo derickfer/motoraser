@@ -98,12 +98,11 @@ async function loadUserDoc(uid){
 let map, meMarker, destMarker;
 let lastLocation = null;
 let lastDest = null;
-let lastDestName = "";          // ✅ nome automático do destino
-let routeLayer = null;          // ✅ linha/rota no mapa
+let lastDestName = "";
+let routeLayer = null;
 
 function initMap(){
-  // Altamira fallback
-  const fallback = { lat: -3.2041, lng: -52.2111 };
+  const fallback = { lat: -3.2041, lng: -52.2111 }; // Altamira
   map = L.map("map", { zoomControl: true }).setView([fallback.lat, fallback.lng], 13);
 
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -124,8 +123,6 @@ function setMyLocation(lat, lng){
   map.setView([lat, lng], 15);
   locStatus.textContent = `Localização: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
   mapInfo.textContent = "Localização OK ✅";
-
-  // ✅ atualiza rota se já tiver destino
   updateRouteIfReady();
 }
 
@@ -133,8 +130,6 @@ function setDestinationOnMap(dest){
   lastDest = dest;
   if (destMarker) { map.removeLayer(destMarker); destMarker = null; }
   destMarker = L.marker([dest.lat, dest.lng]).addTo(map).bindPopup("Destino");
-
-  // ✅ atualiza rota se já tiver localização
   updateRouteIfReady();
 }
 
@@ -161,10 +156,9 @@ btnLocate.onclick = async () => {
 };
 
 // ===========================
-// ✅ REVERSE GEOCODE (nome do lugar) - Nominatim
+// REVERSE GEOCODE (Nominatim)
 // ===========================
 async function reverseGeocodeOSM(lat, lng){
-  // Nominatim: uso leve para demo
   const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&zoom=18&addressdetails=1`;
   const resp = await fetch(url, {
     headers: {
@@ -176,7 +170,6 @@ async function reverseGeocodeOSM(lat, lng){
   if (!resp.ok) throw new Error("Não foi possível pegar o nome do local (OSM).");
   const data = await resp.json();
 
-  // tenta montar um nome mais “curto” e bonito
   const addr = data.address || {};
   const best =
     data.name ||
@@ -196,10 +189,9 @@ async function reverseGeocodeOSM(lat, lng){
 }
 
 // ===========================
-// ✅ ROTAS (linha no mapa) - OSRM
+// ROTAS (OSRM)
 // ===========================
 async function fetchRouteOSRM(from, to){
-  // OSRM precisa de "lon,lat"
   const url = `https://router.project-osrm.org/route/v1/driving/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson&steps=false`;
   const resp = await fetch(url, { headers: { "Accept": "application/json" } });
   if (!resp.ok) throw new Error("Falha ao buscar rota (OSRM).");
@@ -209,7 +201,7 @@ async function fetchRouteOSRM(from, to){
   if (!route?.geometry) throw new Error("Rota não encontrada.");
 
   return {
-    geometry: route.geometry,                 // GeoJSON LineString
+    geometry: route.geometry,
     distance: route.distance || 0,
     duration: route.duration || 0
   };
@@ -225,34 +217,29 @@ function clearRoute(){
 async function updateRouteIfReady(){
   if (!lastLocation || !lastDest) return;
 
-  // desenha rota (best-effort)
   try{
     mapInfo.textContent = "Calculando rota...";
     const r = await fetchRouteOSRM(lastLocation, lastDest);
 
     clearRoute();
 
-    // desenha GeoJSON
     routeLayer = L.geoJSON(r.geometry, {
       style: { weight: 5, opacity: 0.9 }
     }).addTo(map);
 
-    // ajusta zoom para caber tudo
     const bounds = routeLayer.getBounds();
     if (bounds && bounds.isValid()) map.fitBounds(bounds.pad(0.2));
 
-    // info simples
     const km = (r.distance / 1000).toFixed(2);
     const min = Math.max(1, Math.round(r.duration / 60));
     mapInfo.textContent = `Rota: ${km} km • ~${min} min ✅`;
   }catch(e){
-    // não quebra nada se rota falhar
     mapInfo.textContent = "Rota indisponível (ok para demo).";
   }
 }
 
 /* ===========================
-   ✅ SELECIONAR DESTINO NO MAPA (CLICK)
+   SELECIONAR DESTINO NO MAPA
    =========================== */
 let pickingMode = false;
 let pickingMarker = null;
@@ -295,7 +282,6 @@ function stopPickOnMap() {
   closeModal();
 }
 
-// 1 clique no mapa = pega lat/lng + nome automático + rota
 map.on("click", async (e) => {
   if (!pickingMode) return;
 
@@ -305,10 +291,8 @@ map.on("click", async (e) => {
   if (pickingMarker) map.removeLayer(pickingMarker);
   pickingMarker = L.marker([lat, lng]).addTo(map).bindPopup("Destino selecionado ✅").openPopup();
 
-  // marca destino "oficial"
   setDestinationOnMap({ lat, lng });
 
-  // tenta pegar nome automático
   try{
     mapInfo.textContent = "Buscando nome do local...";
     const place = await reverseGeocodeOSM(lat, lng);
@@ -337,13 +321,13 @@ btnLogout.onclick = async () => {
   try { await auth.signOut(); } catch(e){}
 };
 
+// ✅ ÚNICO onAuthStateChanged (SEM DUPLICAR)
 auth.onAuthStateChanged(async (user) => {
   if (user) {
     btnLogin.classList.add("hidden");
     btnLogout.classList.remove("hidden");
     userStatus.textContent = `Usuário: ${user.displayName || "Sem nome"}`;
 
-    // sync básico
     try{
       await db.collection("users").doc(user.uid).set({
         name: user.displayName || "",
@@ -353,7 +337,6 @@ auth.onAuthStateChanged(async (user) => {
       }, { merge:true });
     }catch(e){}
 
-    // carrega perfil
     try{
       const doc = await loadUserDoc(user.uid);
       if (doc?.profile) { setFormFromProfile(doc.profile); saveProfileLocal(doc.profile); }
@@ -362,12 +345,20 @@ auth.onAuthStateChanged(async (user) => {
       setFormFromProfile(loadProfileLocal());
     }
 
+    // ✅ PRESENÇA (lista + mapa)
+    presenceStart();
+    presenceListen();
+
     startChallengesListener();
   } else {
     btnLogin.classList.remove("hidden");
     btnLogout.classList.add("hidden");
     userStatus.textContent = "Usuário: visitante";
     setFormFromProfile(loadProfileLocal());
+
+    // ✅ para presença
+    presenceStop();
+
     stopChallengesListener();
     renderChallenges([]);
   }
@@ -404,9 +395,6 @@ btnClear.onclick = async () => {
 };
 
 // =================== CHALLENGES (Firestore) ===================
-// Collection: challenges
-// status: "open" | "accepted" | "racing" | "finished" | "canceled"
-
 let unsubChallenges = null;
 
 function stopChallengesListener(){
@@ -432,7 +420,6 @@ btnCreateChallenge.onclick = async () => {
   const u = auth.currentUser;
   if (!u) return openModal("Login", `<p class="muted">Entre com Google para criar desafio.</p>`);
 
-  // precisa de localização
   let myLoc;
   try { myLoc = await getLocationOrAsk(); }
   catch(e){ return openModal("Localização", `<p class="muted">Permita a localização primeiro.</p>`); }
@@ -501,21 +488,17 @@ btnCreateChallenge.onclick = async () => {
     btnPickMap.onclick = () => {
       closeModal();
       startPickOnMap(({ lat, lng, name }) => {
-        // reabre modal já preenchido
         btnCreateChallenge.onclick();
 
         setTimeout(() => {
           const latInput = document.getElementById("cLat");
           const lngInput = document.getElementById("cLng");
-          const nameInput = document.getElementById("cDestName");
+          const nameInput2 = document.getElementById("cDestName");
 
           if (latInput) latInput.value = lat.toFixed(6);
           if (lngInput) lngInput.value = lng.toFixed(6);
+          if (nameInput2 && name) nameInput2.value = name;
 
-          // ✅ nome automático
-          if (nameInput && name) nameInput.value = name;
-
-          // ✅ tenta desenhar rota (se já tiver localização)
           updateRouteIfReady();
         }, 120);
       });
@@ -561,7 +544,6 @@ btnCreateChallenge.onclick = async () => {
           originAccepterLng: null
         });
 
-        // guarda para o próximo modal
         lastDestName = destName;
         setDestinationOnMap({ lat, lng });
         updateRouteIfReady();
@@ -665,7 +647,6 @@ function renderChallenges(docs){
     };
   });
 
-  // ✅ botão rota na lista
   challengesEl.querySelectorAll("button[data-action='route']").forEach(btn => {
     btn.onclick = async () => {
       try{
@@ -890,21 +871,26 @@ async function cancelChallenge(id){
     openModal("Erro", `<p class="muted">${escapeHtml(e?.message || String(e))}</p>`);
   }
 }
+
 /* ===========================
-   ONLINE USERS (🟢)
+   PRESENÇA ONLINE + MAPA (🟢)
+   Coleção: presence (docId = uid)
    =========================== */
 
-// coleção: presence
-// docId = uid
 const PRESENCE_COL = "presence";
-const ONLINE_TTL_MS = 60 * 1000; // considera online se pingou nos últimos 60s
-let presenceUnsub = null;
-let presenceInterval = null;
+const ONLINE_TTL_MS = 60 * 1000;  // online se pingou nos últimos 60s
+const PRESENCE_PING_MS = 25000;   // ping a cada 25s
+const PRESENCE_LOC_MS  = 20000;   // atualiza localização a cada 20s
 
-// elemento da UI
+let presenceUnsub = null;
+let presencePingInterval = null;
+let presenceLocInterval = null;
+
+// elemento da UI (precisa existir no HTML)
 const onlineUsersEl = document.getElementById("onlineUsers");
 
-function renderOnlineUsers(list){
+// ---------- UI LISTA ----------
+function renderOnlineUsersList(list){
   if (!onlineUsersEl) return;
 
   if (!list.length) {
@@ -918,7 +904,9 @@ function renderOnlineUsers(list){
         <span style="width:10px;height:10px;border-radius:999px;background:#22c55e;display:inline-block;"></span>
         <div>
           <div class="rideTitle" style="margin:0;">${escapeHtml(u.name || "Sem nome")}</div>
-          <div class="rideMeta">${escapeHtml(u.city || "")}</div>
+          <div class="rideMeta">
+            ${(u.lat != null && u.lng != null) ? escapeHtml(`${u.lat.toFixed(5)}, ${u.lng.toFixed(5)}`) : "Sem localização"}
+          </div>
         </div>
       </div>
       <div class="tiny muted">${u.lastSeenText || ""}</div>
@@ -926,25 +914,102 @@ function renderOnlineUsers(list){
   `).join("");
 }
 
-async function setPresenceOnline(){
-  const u = auth.currentUser;
-  if (!u) return;
+// ---------- ÍCONE VERDE NO MAPA ----------
+function greenDotIcon(){
+  return L.divIcon({
+    className: "",
+    html: `
+      <div style="
+        width:14px;height:14px;border-radius:999px;
+        background:#22c55e;
+        border:2px solid white;
+        box-shadow:0 2px 10px rgba(0,0,0,.25);
+      "></div>
+    `,
+    iconSize: [14, 14],
+    iconAnchor: [7, 7],
+  });
+}
 
-  const ref = db.collection(PRESENCE_COL).doc(u.uid);
+// ---------- MARKERS ONLINE ----------
+const onlineMarkers = new Map(); // uid -> Leaflet marker
+
+function clearOnlineMarkers(){
+  if (!map) return;
+  for (const [, marker] of onlineMarkers.entries()){
+    try { map.removeLayer(marker); } catch(e){}
+  }
+  onlineMarkers.clear();
+}
+
+function upsertOnlineMarker(u){
+  if (!map) return;
+  if (!u?.uid) return;
+  if (!Number.isFinite(u.lat) || !Number.isFinite(u.lng)) return;
+
+  const title = u.name || "Usuário";
+  const popupHtml = `
+    <div style="min-width:160px">
+      <div style="font-weight:700;">🟢 ${escapeHtml(title)}</div>
+      <div class="muted" style="font-size:12px;">${escapeHtml(u.lat.toFixed(5) + ", " + u.lng.toFixed(5))}</div>
+    </div>
+  `;
+
+  const existing = onlineMarkers.get(u.uid);
+  if (existing){
+    existing.setLatLng([u.lat, u.lng]);
+    existing.setPopupContent(popupHtml);
+    return;
+  }
+
+  const m = L.marker([u.lat, u.lng], { icon: greenDotIcon() })
+    .addTo(map)
+    .bindPopup(popupHtml);
+
+  onlineMarkers.set(u.uid, m);
+}
+
+// ---------- SALVAR PRESENÇA ----------
+async function presenceSetOnline(){
+  const user = auth.currentUser;
+  if (!user) return;
+
+  let loc = null;
+  try { loc = await getLocationOrAsk(); } catch(e){ /* ok sem loc */ }
+
+  const ref = db.collection(PRESENCE_COL).doc(user.uid);
   await ref.set({
-    uid: u.uid,
-    name: u.displayName || "Sem nome",
-    photoURL: u.photoURL || "",
+    uid: user.uid,
+    name: user.displayName || "Sem nome",
+    photoURL: user.photoURL || "",
     online: true,
-    lastSeen: firebase.firestore.FieldValue.serverTimestamp()
+    lastSeen: firebase.firestore.FieldValue.serverTimestamp(),
+    lat: loc?.lat ?? null,
+    lng: loc?.lng ?? null
   }, { merge: true });
 }
 
-async function setPresenceOffline(){
-  const u = auth.currentUser;
-  if (!u) return;
+async function presenceUpdateLocation(){
+  const user = auth.currentUser;
+  if (!user) return;
 
-  const ref = db.collection(PRESENCE_COL).doc(u.uid);
+  let loc = null;
+  try { loc = await getLocationOrAsk(); } catch(e){ return; }
+
+  const ref = db.collection(PRESENCE_COL).doc(user.uid);
+  await ref.set({
+    lat: loc.lat,
+    lng: loc.lng,
+    lastSeen: firebase.firestore.FieldValue.serverTimestamp(),
+    online: true
+  }, { merge: true });
+}
+
+async function presenceSetOffline(){
+  const user = auth.currentUser;
+  if (!user) return;
+
+  const ref = db.collection(PRESENCE_COL).doc(user.uid);
   try{
     await ref.set({
       online: false,
@@ -953,46 +1018,50 @@ async function setPresenceOffline(){
   }catch(e){}
 }
 
-function startPresenceHeartbeat(){
-  stopPresenceHeartbeat();
+// ---------- START / STOP ----------
+function presenceStart(){
+  presenceStop();
 
-  // marca online agora
-  setPresenceOnline();
+  presenceSetOnline();
 
-  // ping a cada 25s
-  presenceInterval = setInterval(() => {
-    setPresenceOnline();
-  }, 25000);
+  presencePingInterval = setInterval(() => {
+    presenceSetOnline();
+  }, PRESENCE_PING_MS);
 
-  // quando fechar aba tenta marcar offline
+  presenceLocInterval = setInterval(() => {
+    presenceUpdateLocation();
+  }, PRESENCE_LOC_MS);
+
   window.addEventListener("beforeunload", () => {
-    // best-effort
-    try { setPresenceOffline(); } catch(e){}
+    try { presenceSetOffline(); } catch(e){}
   });
-
-  // quando trocar de aba (background), ainda pinga normal
 }
 
-function stopPresenceHeartbeat(){
-  if (presenceInterval) clearInterval(presenceInterval);
-  presenceInterval = null;
+function presenceStop(){
+  if (presencePingInterval) clearInterval(presencePingInterval);
+  if (presenceLocInterval) clearInterval(presenceLocInterval);
+  presencePingInterval = null;
+  presenceLocInterval = null;
+
+  if (presenceUnsub) presenceUnsub();
+  presenceUnsub = null;
+
+  clearOnlineMarkers();
+  renderOnlineUsersList([]);
 }
 
-// escuta a lista de online
-function startPresenceListener(){
-  stopPresenceListener();
-  if (!onlineUsersEl) return;
+// ---------- LISTENER ----------
+function presenceListen(){
+  if (presenceUnsub) presenceUnsub();
 
   presenceUnsub = db.collection(PRESENCE_COL)
     .orderBy("lastSeen", "desc")
-    .limit(50)
+    .limit(80)
     .onSnapshot((snap) => {
       const now = Date.now();
 
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      const list = snap.docs.map(d => ({ id:d.id, ...d.data() }))
         .filter(p => {
-          // considerado online se:
-          // - online=true e ping recente (TTL)
           const ts = p.lastSeen?.toDate ? p.lastSeen.toDate().getTime() : 0;
           const fresh = (now - ts) <= ONLINE_TTL_MS;
           return p.online === true && fresh;
@@ -1001,29 +1070,17 @@ function startPresenceListener(){
           const ts = p.lastSeen?.toDate ? p.lastSeen.toDate() : null;
           return {
             ...p,
-            lastSeenText: ts ? ts.toLocaleTimeString() : ""
+            lastSeenText: ts ? ts.toLocaleTimeString() : "",
+            lat: Number.isFinite(Number(p.lat)) ? Number(p.lat) : null,
+            lng: Number.isFinite(Number(p.lng)) ? Number(p.lng) : null
           };
         });
 
-      renderOnlineUsers(list);
-    }, (err) => {
+      renderOnlineUsersList(list);
+
+      clearOnlineMarkers();
+      for (const u of list) upsertOnlineMarker(u);
+    }, () => {
       if (onlineUsersEl) onlineUsersEl.innerHTML = `<div class="muted">Erro ao carregar online.</div>`;
     });
 }
-
-function stopPresenceListener(){
-  if (presenceUnsub) presenceUnsub();
-  presenceUnsub = null;
-}
-
-// liga/desliga quando login muda
-auth.onAuthStateChanged((user) => {
-  if (user) {
-    startPresenceHeartbeat();
-    startPresenceListener();
-  } else {
-    stopPresenceHeartbeat();
-    stopPresenceListener();
-    renderOnlineUsers([]);
-  }
-});
