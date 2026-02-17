@@ -1157,3 +1157,38 @@ function presenceListen(){
       if (onlineUsersEl) onlineUsersEl.innerHTML = `<div class="muted">Erro ao carregar online.</div>`;
     });
 }
+// =================== MAP FULLSCREEN ===================
+const btnMapFull = document.getElementById("btnMapFull");
+const mapBoxEl = document.getElementById("mapBox");
+
+function setMapFullscreen(on){
+  if (!mapBoxEl) return;
+
+  if (on) mapBoxEl.classList.add("isFullscreen");
+  else mapBoxEl.classList.remove("isFullscreen");
+
+  // importante pro Leaflet redesenhar
+  setTimeout(() => {
+    try { map.invalidateSize(true); } catch(e){}
+  }, 120);
+}
+
+function toggleMapFullscreen(){
+  if (!mapBoxEl) return;
+  const on = mapBoxEl.classList.contains("isFullscreen");
+  setMapFullscreen(!on);
+
+  if (btnMapFull) btnMapFull.textContent = on ? "⛶ Tela cheia" : "✖ Fechar";
+}
+
+if (btnMapFull){
+  btnMapFull.onclick = toggleMapFullscreen;
+}
+
+// ESC fecha
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && mapBoxEl?.classList.contains("isFullscreen")){
+    setMapFullscreen(false);
+    if (btnMapFull) btnMapFull.textContent = "⛶ Tela cheia";
+  }
+});
