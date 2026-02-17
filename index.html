@@ -59,7 +59,18 @@
 
         <div class="heroRight">
           <div class="mapBox" id="mapBox">
-            <div class="mapTop">
+  <div class="mapTop">
+    <div class="mapTitle">Mapa</div>
+
+    <div style="display:flex; gap:10px; align-items:center;">
+      <div class="mapInfo" id="mapInfo">Toque em “Minha localização”.</div>
+      <button id="btnMapFull" class="btn ghost" type="button">⛶ Tela cheia</button>
+    </div>
+  </div>
+
+  <div id="map"></div>
+</div>
+
               <div class="mapTitle">Mapa</div>
 
               <div class="mapTopRight">
@@ -160,3 +171,4 @@
   <script src="./app.js?v=1"></script>
 </body>
 </html>
+
