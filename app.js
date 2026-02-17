@@ -72,7 +72,7 @@ function haversineMeters(a, b){
   const s = Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLng/2)**2;
   return 2 * R * Math.asin(Math.sqrt(s));
 }
-function canGeofenceArrive(myLoc, destLoc, radiusMeters = 120){
+function canGeofenceArrive(myLoc, destLoc, radiusMeters = 100){
   if (!myLoc || !destLoc) return false;
   const dist = haversineMeters(myLoc, destLoc);
   return dist <= radiusMeters;
@@ -113,7 +113,7 @@ function initMap(){
   meMarker = L.marker([fallback.lat, fallback.lng]).addTo(map).bindPopup("Você");
   destMarker = null;
 
-  mapInfo.textContent = "Toque em “Minha localização”.";
+  mapInfo.textContent = "Ative a localização para iniciar.";
 }
 initMap();
 
@@ -123,7 +123,12 @@ function setMyLocation(lat, lng){
   map.setView([lat, lng], 15);
   locStatus.textContent = `Localização: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
   mapInfo.textContent = "Localização OK ✅";
+
+  // atualiza rota se já tiver destino
   updateRouteIfReady();
+
+  // se tiver corrida ativa, tenta auto-chegada
+  if (autoArriveActiveId) autoArriveTryMark(autoArriveActiveId);
 }
 
 function setDestinationOnMap(dest){
@@ -239,6 +244,93 @@ async function updateRouteIfReady(){
 }
 
 /* ===========================
+   ✅ GPS AO VIVO + CHEGADA AUTOMÁTICA (SEM BOTÃO)
+   - Move o ponto do motorista no mapa (watchPosition)
+   - Quando entrar no raio do destino (100m), marca chegada no Firestore
+   =========================== */
+
+const AUTO_ARRIVE_RADIUS_M = 100;      // ✅ seu raio
+const AUTO_ARRIVE_COOLDOWN_MS = 6000;  // evita spam
+
+let gpsWatchId = null;
+let autoArriveActiveId = null;
+let autoArriveLastTry = 0;
+
+function startGpsWatch() {
+  if (gpsWatchId != null) return;
+  if (!navigator.geolocation) return;
+
+  gpsWatchId = navigator.geolocation.watchPosition(
+    (pos) => {
+      setMyLocation(pos.coords.latitude, pos.coords.longitude);
+    },
+    (err) => {
+      console.warn("GPS watch error:", err);
+    },
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 12000 }
+  );
+}
+function stopGpsWatch() {
+  if (gpsWatchId == null) return;
+  try { navigator.geolocation.clearWatch(gpsWatchId); } catch(e){}
+  gpsWatchId = null;
+}
+
+async function autoArriveTryMark(challengeId) {
+  const u = auth.currentUser;
+  if (!u) return;
+
+  const now = Date.now();
+  if (now - autoArriveLastTry < AUTO_ARRIVE_COOLDOWN_MS) return;
+  autoArriveLastTry = now;
+
+  let myLoc;
+  try { myLoc = await getLocationOrAsk(); } catch(e){ return; }
+
+  const ref = db.collection("challenges").doc(challengeId);
+
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      const c = snap.data();
+
+      if (c.status !== "racing") return;
+
+      const isCreator = c.createdByUid === u.uid;
+      const isAccepter = c.acceptedByUid === u.uid;
+      if (!isCreator && !isAccepter) return;
+
+      // já marcou?
+      if (isCreator && c.arrivedCreatorAt) return;
+      if (isAccepter && c.arrivedAccepterAt) return;
+
+      const dest = { lat: Number(c.destinationLat), lng: Number(c.destinationLng) };
+      const ok = canGeofenceArrive(myLoc, dest, AUTO_ARRIVE_RADIUS_M);
+      if (!ok) return;
+
+      const updates = {};
+      if (isCreator) updates.arrivedCreatorAt = firebase.firestore.FieldValue.serverTimestamp();
+      if (isAccepter) updates.arrivedAccepterAt = firebase.firestore.FieldValue.serverTimestamp();
+
+      tx.update(ref, updates);
+    });
+
+    await tryFinish(challengeId);
+  } catch (e) {
+    console.warn("Auto-arrive fail:", e?.message || e);
+  }
+}
+
+function enableAutoArriveForChallenge(challengeId) {
+  autoArriveActiveId = challengeId;
+}
+
+function disableAutoArrive() {
+  autoArriveActiveId = null;
+}
+
+/* ===========================
    SELECIONAR DESTINO NO MAPA
    =========================== */
 let pickingMode = false;
@@ -328,6 +420,9 @@ auth.onAuthStateChanged(async (user) => {
     btnLogout.classList.remove("hidden");
     userStatus.textContent = `Usuário: ${user.displayName || "Sem nome"}`;
 
+    // ✅ GPS SEMPRE LIGADO (você pediu)
+    startGpsWatch();
+
     try{
       await db.collection("users").doc(user.uid).set({
         name: user.displayName || "",
@@ -356,7 +451,11 @@ auth.onAuthStateChanged(async (user) => {
     userStatus.textContent = "Usuário: visitante";
     setFormFromProfile(loadProfileLocal());
 
-    // ✅ para presença
+    disableAutoArrive();
+
+    // ✅ GPS pode ficar ligado mesmo sem login, mas se quiser economizar, desliga:
+    // stopGpsWatch();
+
     presenceStop();
 
     stopChallengesListener();
@@ -568,6 +667,26 @@ function renderChallenges(docs){
   liveCount.textContent = `${list.length} online`;
   challengesEl.innerHTML = "";
 
+  // ✅ AUTO-CHEGADA: procura um desafio que EU esteja correndo
+  if (me) {
+    const myRacing = list.find(c =>
+      c.status === "racing" && (c.createdByUid === me || c.acceptedByUid === me)
+    );
+
+    if (myRacing) {
+      enableAutoArriveForChallenge(myRacing.id);
+
+      // marca destino no mapa (top)
+      const dest = { lat: Number(myRacing.destinationLat), lng: Number(myRacing.destinationLng) };
+      setDestinationOnMap(dest);
+
+      // tenta já
+      autoArriveTryMark(myRacing.id);
+    } else {
+      disableAutoArrive();
+    }
+  }
+
   if (!list.length){
     challengesEl.innerHTML = `<div class="muted">Nenhum desafio ativo agora.</div>`;
     return;
@@ -596,10 +715,8 @@ function renderChallenges(docs){
       ? `<button class="btn primary" data-action="start" data-id="${c.id}">🏁 Iniciar</button>`
       : "";
 
-    const canArrive = (c.status === "racing" && me && (isMine || isAcceptedByMe));
-    const arriveBtn = canArrive
-      ? `<button class="btn primary" data-action="arrive" data-id="${c.id}">📍 CHEGUEI</button>`
-      : "";
+    // ✅ SEM BOTÃO "CHEGUEI" (automático)
+    const arriveBtn = "";
 
     const cancelBtn = (c.status === "open" && me && isMine)
       ? `<button class="btn danger" data-action="cancel" data-id="${c.id}">🛑 Cancelar</button>`
@@ -670,9 +787,7 @@ function renderChallenges(docs){
     btn.onclick = async () => await startRace(btn.getAttribute("data-id"));
   });
 
-  challengesEl.querySelectorAll("button[data-action='arrive']").forEach(btn => {
-    btn.onclick = async () => await arrive(btn.getAttribute("data-id"));
-  });
+  // ✅ NÃO TEM MAIS "arrive"
 
   challengesEl.querySelectorAll("button[data-action='cancel']").forEach(btn => {
     btn.onclick = async () => await cancelChallenge(btn.getAttribute("data-id"));
@@ -738,55 +853,11 @@ async function startRace(id){
       });
     });
 
-    openModal("Valendo! 🏁", `<p class="muted">Corrida iniciada. Vá até o destino e aperte <b>CHEGUEI</b>.</p>`);
-  }catch(e){
-    openModal("Erro", `<p class="muted">${escapeHtml(e?.message || String(e))}</p>`);
-  }
-}
+    // ativa auto-chegada pra este desafio
+    enableAutoArriveForChallenge(id);
+    autoArriveTryMark(id);
 
-async function arrive(id){
-  const u = auth.currentUser;
-  if (!u) return openModal("Login", `<p class="muted">Entre com Google.</p>`);
-
-  const ref = db.collection("challenges").doc(id);
-
-  let myLoc;
-  try { myLoc = await getLocationOrAsk(); }
-  catch(e){ return openModal("Localização", `<p class="muted">Permita a localização.</p>`); }
-
-  try{
-    await db.runTransaction(async (tx) => {
-      const snap = await tx.get(ref);
-      if (!snap.exists) throw new Error("Desafio não existe.");
-      const c = snap.data();
-
-      if (c.status !== "racing") throw new Error("Só dá pra marcar chegada quando estiver CORRENDO.");
-
-      const isCreator = c.createdByUid === u.uid;
-      const isAccepter = c.acceptedByUid === u.uid;
-      if (!isCreator && !isAccepter) throw new Error("Você não participa desse desafio.");
-
-      const dest = { lat:Number(c.destinationLat), lng:Number(c.destinationLng) };
-      const ok = canGeofenceArrive(myLoc, dest, 150);
-      if (!ok) {
-        const dist = haversineMeters(myLoc, dest);
-        throw new Error(`Você ainda está longe do destino. Distância ~ ${Math.round(dist)}m`);
-      }
-
-      const updates = {};
-      if (isCreator) {
-        if (c.arrivedCreatorAt) throw new Error("Você já marcou chegada.");
-        updates.arrivedCreatorAt = firebase.firestore.FieldValue.serverTimestamp();
-      } else {
-        if (c.arrivedAccepterAt) throw new Error("Você já marcou chegada.");
-        updates.arrivedAccepterAt = firebase.firestore.FieldValue.serverTimestamp();
-      }
-
-      tx.update(ref, updates);
-    });
-
-    await tryFinish(id);
-    openModal("Chegada registrada ✅", `<p class="muted">Se você foi o primeiro, você ganha.</p>`);
+    openModal("Valendo! 🏁", `<p class="muted">Corrida iniciada. Chegada é <b>automática</b> quando entrar em 100m do destino.</p>`);
   }catch(e){
     openModal("Erro", `<p class="muted">${escapeHtml(e?.message || String(e))}</p>`);
   }
@@ -839,6 +910,8 @@ async function tryFinish(id){
     if (snap.exists){
       const c = snap.data();
       if (c?.status === "finished"){
+        disableAutoArrive();
+
         openModal("Resultado 🏆", `
           <p class="muted">Vencedor: <b>${escapeHtml(c.winnerName || "—")}</b></p>
           <p class="muted">Aposta: <b>${Number(c.stakePoints||0)} pts</b></p>
