@@ -4,6 +4,10 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>MOTORASER</title>
+
+  <!-- (opcional) favicon do navegador -->
+  <link rel="icon" href="./logo.png" />
+
   <link rel="stylesheet" href="./styles.css?v=1" />
 
   <!-- Leaflet (OpenStreetMap) -->
@@ -19,7 +23,11 @@
   <div class="app">
     <header class="topbar">
       <div class="brand">
-        <div class="logo">M</div>
+        <!-- ✅ LOGO COM IMAGEM (no lugar do M) -->
+        <div class="logo" aria-label="Logo Motoraser">
+          <img src="./logo.png" alt="Motoraser" />
+        </div>
+
         <div class="brandText">
           <div class="brandName">MOTORASER</div>
           <div class="brandTag">Aposta Corrida (simulador) • 1x1</div>
