@@ -341,6 +341,9 @@ btnCreateChallenge.onclick = async () => {
           winnerName: null,
           finishedAt: null,
 
+          // manual finish
+          manualFinish: false,
+
           originCreatorLat: myLoc.lat,
           originCreatorLng: myLoc.lng,
           originAccepterLat: null,
@@ -375,6 +378,7 @@ function renderChallenges(docs){
   for (const c of list){
     const isMine = me && c.createdByUid === me;
     const isAcceptedByMe = me && c.acceptedByUid === me;
+    const isParticipant = !!me && (isMine || isAcceptedByMe);
 
     const statusTag =
       c.status === "open" ? `<span class="tag open">Aberto</span>` :
@@ -386,7 +390,6 @@ function renderChallenges(docs){
 
     const dest = { lat:Number(c.destinationLat), lng:Number(c.destinationLng) };
 
-    // Botões de ação por estado
     // 1) aceitar: só se aberto e não for meu
     const acceptBtn = (c.status === "open" && me && !isMine)
       ? `<button class="btn primary" data-action="accept" data-id="${c.id}">✅ Aceitar</button>`
@@ -404,12 +407,17 @@ function renderChallenges(docs){
       ? `<button class="btn primary" data-action="arrive" data-id="${c.id}">📍 CHEGUEI</button>`
       : "";
 
-    // 4) cancelar: só criador e só quando aberto (pra limpar desafio)
+    // ✅ 3.5) FINALIZAR MANUAL: quando correndo, só os 2 participantes
+    const canFinishManual = (c.status === "racing" && isParticipant);
+    const finishBtn = canFinishManual
+      ? `<button class="btn danger" data-action="finalizar-corrida" data-id="${c.id}">🏁 FINALIZAR</button>`
+      : "";
+
+    // 4) cancelar: só criador e só quando aberto
     const cancelBtn = (c.status === "open" && me && isMine)
       ? `<button class="btn danger" data-action="cancel" data-id="${c.id}">🛑 Cancelar</button>`
       : "";
 
-    // Info de quem está participando
     const creator = escapeHtml(c.createdByName || "—");
     const accepter = escapeHtml(c.acceptedByName || "—");
 
@@ -435,6 +443,7 @@ function renderChallenges(docs){
         ${acceptBtn}
         ${startBtn}
         ${arriveBtn}
+        ${finishBtn}
         ${cancelBtn}
       </div>
     `;
@@ -467,6 +476,9 @@ function renderChallenges(docs){
   challengesEl.querySelectorAll("button[data-action='cancel']").forEach(btn => {
     btn.onclick = async () => await cancelChallenge(btn.getAttribute("data-id"));
   });
+
+  // ✅ bind do finalizar manual
+  bindFinalizarCorridaBotoes(challengesEl);
 }
 
 // =================== ACTIONS ===================
@@ -528,7 +540,7 @@ async function startRace(id){
       });
     });
 
-    openModal("Valendo! 🏁", `<p class="muted">Corrida iniciada. Vá até o destino e aperte <b>CHEGUEI</b>.</p>`);
+    openModal("Valendo! 🏁", `<p class="muted">Corrida iniciada. Vá até o destino e aperte <b>CHEGUEI</b> (ou finalize manual).</p>`);
   }catch(e){
     openModal("Erro", `<p class="muted">${escapeHtml(e?.message || String(e))}</p>`);
   }
@@ -540,7 +552,6 @@ async function arrive(id){
 
   const ref = db.collection("challenges").doc(id);
 
-  // pega localização
   let myLoc;
   try { myLoc = await getLocationOrAsk(); }
   catch(e){ return openModal("Localização", `<p class="muted">Permita a localização.</p>`); }
@@ -558,13 +569,12 @@ async function arrive(id){
       if (!isCreator && !isAccepter) throw new Error("Você não participa desse desafio.");
 
       const dest = { lat:Number(c.destinationLat), lng:Number(c.destinationLng) };
-      const ok = canGeofenceArrive(myLoc, dest, 150); // raio 150m
+      const ok = canGeofenceArrive(myLoc, dest, 150);
       if (!ok) {
         const dist = haversineMeters(myLoc, dest);
         throw new Error(`Você ainda está longe do destino. Distância ~ ${Math.round(dist)}m`);
       }
 
-      // marca chegada
       const updates = {};
       if (isCreator) {
         if (c.arrivedCreatorAt) throw new Error("Você já marcou chegada.");
@@ -577,9 +587,7 @@ async function arrive(id){
       tx.update(ref, updates);
     });
 
-    // depois da transação, tenta finalizar se alguém já chegou antes
     await tryFinish(id);
-
     openModal("Chegada registrada ✅", `<p class="muted">Se você foi o primeiro, você ganha.</p>`);
   }catch(e){
     openModal("Erro", `<p class="muted">${escapeHtml(e?.message || String(e))}</p>`);
@@ -595,13 +603,8 @@ async function tryFinish(id){
 
     if (c.status !== "racing") return;
     if (!c.arrivedCreatorAt && !c.arrivedAccepterAt) return;
-
-    // se já tem winner, nada
     if (c.winnerUid) return;
 
-    // regra simples:
-    // - Se só um chegou: ele vence
-    // - Se os dois chegaram: quem tem arrivedAt menor vence (Firestore timestamp)
     let winnerUid = null;
     let winnerName = null;
 
@@ -612,7 +615,6 @@ async function tryFinish(id){
       winnerUid = c.acceptedByUid;
       winnerName = c.acceptedByName || "Adversário";
     } else if (c.arrivedCreatorAt && c.arrivedAccepterAt) {
-      // compara
       const tC = c.arrivedCreatorAt.toMillis();
       const tA = c.arrivedAccepterAt.toMillis();
       if (tC <= tA) {
@@ -634,7 +636,6 @@ async function tryFinish(id){
     });
   });
 
-  // avisa vencedor (best-effort)
   try{
     const snap = await db.collection("challenges").doc(id).get();
     if (snap.exists){
@@ -672,6 +673,7 @@ async function cancelChallenge(id){
     openModal("Erro", `<p class="muted">${escapeHtml(e?.message || String(e))}</p>`);
   }
 }
+
 /* ===========================
    FINALIZAR CORRIDA (MANUAL)
    =========================== */
@@ -681,11 +683,7 @@ async function finalizarCorridaManual(challengeId) {
   try {
     const user = auth.currentUser;
     if (!user) {
-      if (typeof openModal === "function") {
-        openModal("Login", `<p class="muted">Entre com Google para finalizar.</p>`);
-      } else {
-        alert("Entre com Google para finalizar.");
-      }
+      openModal("Login", `<p class="muted">Entre com Google para finalizar.</p>`);
       return;
     }
 
@@ -697,10 +695,16 @@ async function finalizarCorridaManual(challengeId) {
 
       const c = snap.data() || {};
 
-      // Se quiser forçar somente quando estiver correndo, descomente:
-      // if (c.status !== "running") throw new Error("Só dá pra finalizar quando estiver ROLANDO.");
+      // ✅ seu app usa "racing"
+      if (c.status !== "racing") {
+        throw new Error("Só dá pra finalizar manualmente quando estiver CORRENDO.");
+      }
 
       if (c.status === "finished") throw new Error("Essa corrida já foi finalizada.");
+
+      const isCreator = c.createdByUid === user.uid;
+      const isAccepter = c.acceptedByUid === user.uid;
+      if (!isCreator && !isAccepter) throw new Error("Você não participa desse desafio.");
 
       tx.update(ref, {
         status: "finished",
@@ -711,18 +715,10 @@ async function finalizarCorridaManual(challengeId) {
       });
     });
 
-    if (typeof openModal === "function") {
-      openModal("Finalizada ✅", `<p class="muted">Corrida finalizada.</p>`);
-    } else {
-      alert("Corrida finalizada.");
-    }
+    openModal("Finalizada ✅", `<p class="muted">Corrida finalizada manualmente.</p>`);
   } catch (e) {
     const msg = e?.message || String(e);
-    if (typeof openModal === "function") {
-      openModal("Erro", `<p class="muted">${msg}</p>`);
-    } else {
-      alert(msg);
-    }
+    openModal("Erro", `<p class="muted">${escapeHtml(msg)}</p>`);
   }
 }
 
@@ -735,32 +731,26 @@ function bindFinalizarCorridaBotoes(containerEl) {
       const id = btn.getAttribute("data-id");
       if (!id) return;
 
-      // Confirmação simples (se você já usa modal, ele usa)
-      if (typeof openModal === "function" && typeof closeModal === "function") {
-        openModal(
-          "Finalizar corrida?",
-          `
-            <p class="muted">Tem certeza que deseja <b>FINALIZAR</b> agora?</p>
-            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;">
-              <button id="__yesFinish" class="btn danger" type="button">SIM, FINALIZAR</button>
-              <button id="__noFinish" class="btn ghost" type="button">Cancelar</button>
-            </div>
-          `
-        );
+      openModal(
+        "Finalizar corrida?",
+        `
+          <p class="muted">Tem certeza que deseja <b>FINALIZAR</b> agora?</p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;">
+            <button id="__yesFinish" class="btn danger" type="button">SIM, FINALIZAR</button>
+            <button id="__noFinish" class="btn ghost" type="button">Cancelar</button>
+          </div>
+        `
+      );
 
-        setTimeout(() => {
-          const yes = document.getElementById("__yesFinish");
-          const no = document.getElementById("__noFinish");
-          if (no) no.onclick = closeModal;
-          if (yes) yes.onclick = async () => {
-            closeModal();
-            await finalizarCorridaManual(id);
-          };
-        }, 0);
-      } else {
-        const ok = confirm("Finalizar corrida agora?");
-        if (ok) finalizarCorridaManual(id);
-      }
+      setTimeout(() => {
+        const yes = document.getElementById("__yesFinish");
+        const no = document.getElementById("__noFinish");
+        if (no) no.onclick = closeModal;
+        if (yes) yes.onclick = async () => {
+          closeModal();
+          await finalizarCorridaManual(id);
+        };
+      }, 0);
     });
   });
 }
