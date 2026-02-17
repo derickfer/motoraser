@@ -270,3 +270,50 @@ input{
   color:#eaf2ff !important;
   border:1px solid rgba(0,200,255,.18) !important;
 }
+/* ===========================
+   MAPA: RUAS MAIS CLARAS (NEON)
+   =========================== */
+
+/* o mapBox vira flex pra fullscreen funcionar direito */
+.mapBox{
+  display:flex;
+  flex-direction:column;
+}
+
+/* mapa cresce automaticamente */
+#map{
+  flex:1;
+  height:auto;
+  width:100%;
+  background:#000; /* evita “preto bugado” enquanto carrega */
+}
+
+/* AQUI é o truque: melhora ruas/pistas no dark */
+#map .leaflet-tile{
+  filter: brightness(1.35) contrast(1.65) saturate(1.20);
+}
+
+/* dá um “glow” leve em linhas/controles */
+#map .leaflet-control-zoom a{
+  background: rgba(0,0,0,.55) !important;
+  color: #fff !important;
+  border: 1px solid rgba(255,255,255,.10) !important;
+}
+
+/* ===========================
+   TELA CHEIA DO MAPA
+   =========================== */
+.mapBox.fullscreen{
+  position: fixed;
+  inset: 12px;
+  z-index: 99999;
+  height: auto;
+  width: auto;
+  border-radius: 18px;
+  box-shadow: 0 30px 120px rgba(0,0,0,.65);
+}
+
+body.lockScroll{
+  overflow: hidden;
+}
+
