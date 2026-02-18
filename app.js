@@ -203,24 +203,40 @@ setMarkerRotation(meMarker, meHeadingDeg);
 initMap();
 
 function setMyLocation(lat, lng){
-// ====== DIREÇÃO: prioridade 1 = bússola, 2 = heading do GPS, 3 = bearing pelo movimento ======
-if (compassEnabled && Number.isFinite(lastCompassDeg)) {
-  meHeadingDeg = normDeg(lastCompassDeg);
-} else if (lastPosForBearing) {
-  const b = bearingDeg(lastPosForBearing, { lat, lng }); // ✅ b definido aqui
+  // salva a localização
+  lastLocation = { lat, lng };
 
-  // suaviza sem “pulo” 359→0
-  const alpha = 0.25;
-  let diff = ((b - meHeadingDeg + 540) % 360) - 180; // -180..180
-  meHeadingDeg = normDeg(meHeadingDeg + alpha * diff);
+  // ====== DIREÇÃO: prioridade 1 = bússola, 2 = heading do GPS, 3 = bearing pelo movimento ======
+  if (compassEnabled && Number.isFinite(lastCompassDeg)) {
+    meHeadingDeg = normDeg(lastCompassDeg);
+  } else if (lastPosForBearing) {
+    const b = bearingDeg(lastPosForBearing, { lat, lng });
+
+    // suaviza sem “pulo” 359→0
+    const alpha = 0.25;
+    let diff = ((b - meHeadingDeg + 540) % 360) - 180; // -180..180
+    meHeadingDeg = normDeg(meHeadingDeg + alpha * diff);
+  }
+
+  // atualiza rotação da seta
+  setMarkerRotation(meMarker, meHeadingDeg);
+
+  // guarda posição anterior p/ bearing
+  lastPosForBearing = { lat, lng };
+
+  // move marker e câmera
+  if (meMarker) meMarker.setLatLng([lat, lng]);
+  if (map) map.setView([lat, lng], 15);
+
+  // UI
+  if (locStatus) locStatus.textContent = `Localização: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  if (mapInfo) mapInfo.textContent = "Localização OK ✅";
+
+  // atualiza rota + chegada
+  updateRouteIfReady();
+  autoArriveCheckAll();
 }
 
-// atualiza a rotação da seta
-setMarkerRotation(meMarker, meHeadingDeg);
-
-// guarda pra próxima vez (bearing)
-lastPosForBearing = { lat, lng };
-}
 
 // =================== GPS: pegar 1 vez + Watch ===================
 async function getLocationOnce(){
