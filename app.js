@@ -182,13 +182,10 @@ function setMarkerRotation(marker, deg){
   arrow.style.transform = `rotate(${normDeg(deg)}deg)`;
 
 // =================== MAP STATE (FALTAVA ISSO) ===================
-let lastDest = null;        // { lat, lng }
-let lastDestName = "";      // string
-let routeLayer = null;      // layer da rota
-
-// se lastLocation não existir ainda em nenhum lugar, cria aqui:
-if (typeof lastLocation === "undefined")
-  var lastLocation = null;
+let lastDest = null;
+let lastDestName = "";
+let routeLayer = null;
+let lastLocation = null;
 }
 
 function initMap(){
@@ -211,6 +208,28 @@ setMarkerRotation(meMarker, meHeadingDeg);
   mapInfo.textContent = "Toque em “Minha localização”.";
 }
 initMap();
+function setMyLocation(lat, lng){
+  lastLocation = { lat, lng };
+
+  // direção pelo movimento
+  if (lastPosForBearing){
+    const b = bearingDeg(lastPosForBearing, {lat,lng});
+    meHeadingDeg = normDeg(b);
+  }
+
+  setMarkerRotation(meMarker, meHeadingDeg);
+  lastPosForBearing = {lat,lng};
+
+  meMarker.setLatLng([lat,lng]);
+
+  map.setView([lat,lng], 15);
+
+  locStatus.textContent = `Localização: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+
+  updateRouteIfReady();
+  autoArriveCheckAll();
+}
+
 // =================== AUTO START (LOCALIZAÇÃO) ===================
 let autoStarted = false;
 
@@ -256,8 +275,13 @@ auth.onAuthStateChanged((user) => {
 function setDestinationOnMap(dest){
   lastDest = dest;
 
-  if (destMarker) { map.removeLayer(destMarker); destMarker = null; }
-  destMarker = L.marker([dest.lat, dest.lng]).addTo(map).bindPopup("Destino");
+  if (destMarker) map.removeLayer(destMarker);
+
+  destMarker = L.marker([dest.lat, dest.lng])
+    .addTo(map)
+    .bindPopup("Destino");
+
+  map.setView([dest.lat, dest.lng], 15);
 
   updateRouteIfReady();
 
