@@ -4,9 +4,11 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>MOTORASER</title>
-  <link rel="stylesheet" href="./styles.css?v=1" />
 
-  <!-- Leaflet (OpenStreetMap) -->
+  <link rel="icon" href="./img/logo.png" />
+  <link rel="stylesheet" href="./styles.css?v=3" />
+
+  <!-- Leaflet -->
   <link
     rel="stylesheet"
     href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -19,7 +21,12 @@
   <div class="app">
     <header class="topbar">
       <div class="brand">
-        <div class="logo">M</div>
+        <!-- ✅ LOGO NO LUGAR DO "M" -->
+        <div class="logoBox">
+          <img class="logoImg" src="./img/logo.png" alt="MOTORASER" onerror="this.style.display='none'; this.parentElement.classList.add('logoFallback')" />
+          <div class="logoFallbackText">M</div>
+        </div>
+
         <div class="brandText">
           <div class="brandName">MOTORASER</div>
           <div class="brandTag">Aposta Corrida (simulador) • 1x1</div>
@@ -55,30 +62,20 @@
           <div class="tiny muted">
             *Simulador: “aposta” = pontos. (Sem dinheiro real.)
           </div>
+
+          <div class="tiny muted" style="margin-top:10px">
+            ✅ Chegada automática: ao entrar no raio de <b>100m</b> do destino, marca sozinho.
+          </div>
         </div>
 
         <div class="heroRight">
           <div class="mapBox" id="mapBox">
-  <div class="mapTop">
-    <div class="mapTitle">Mapa</div>
-
-    <div style="display:flex; gap:10px; align-items:center;">
-      <div class="mapInfo" id="mapInfo">Toque em “Minha localização”.</div>
-      <button id="btnMapFull" class="btn ghost" type="button">⛶ Tela cheia</button>
-    </div>
-  </div>
-
-  <div id="map"></div>
-</div>
-
+            <div class="mapTop">
               <div class="mapTitle">Mapa</div>
+              <div class="mapInfo" id="mapInfo">Toque em “Minha localização”.</div>
 
-              <div class="mapTopRight">
-                <div class="mapInfo" id="mapInfo">Toque em “Minha localização”.</div>
-                <button id="btnMapFull" class="btn ghost tinyBtn" type="button" title="Tela cheia">
-                  ⛶ Tela cheia
-                </button>
-              </div>
+              <button id="btnFullscreenMap" class="btn ghost mapFullBtn" type="button">⛶ Tela cheia</button>
+              <button id="btnCloseFullscreenMap" class="btn danger mapCloseBtn hidden" type="button">✕ Fechar</button>
             </div>
             <div id="map"></div>
           </div>
@@ -86,7 +83,7 @@
       </section>
 
       <section class="grid">
-        <!-- COLUNA ESQUERDA -->
+        <!-- ESQUERDA -->
         <section class="card">
           <div class="cardTop">
             <h2>Desafios ao vivo</h2>
@@ -94,10 +91,10 @@
               <span class="pill" id="liveCount">0 online</span>
             </div>
           </div>
+
           <p class="muted">Abra um desafio, espere outro piloto aceitar e corram pro mesmo destino.</p>
           <div id="challenges" class="rides"></div>
 
-          <!-- ONLINE USERS -->
           <div class="card" style="margin-top:14px">
             <h2>Online agora</h2>
             <p class="muted">Quem está no app nesse momento</p>
@@ -105,7 +102,7 @@
           </div>
         </section>
 
-        <!-- COLUNA DIREITA -->
+        <!-- DIREITA -->
         <section class="card">
           <h2>Meu perfil</h2>
           <p class="muted">Nome + telefone (salva no navegador e no Firebase quando logado).</p>
@@ -130,7 +127,8 @@
           <div class="note">
             <div class="noteTitle">Como vence?</div>
             <div class="muted">
-              Quando a corrida começar, você vence ao chegar no raio do destino.
+              Quando a corrida começar, o app monitora o GPS.
+              Ao entrar no raio de <b>100m</b> do destino, registra a chegada automaticamente.
             </div>
           </div>
         </section>
@@ -161,14 +159,13 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 
-  <!-- Leaflet JS -->
+  <!-- Leaflet -->
   <script
     src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
     crossorigin=""
   ></script>
 
-  <script src="./app.js?v=1"></script>
+  <script src="./app.js?v=3"></script>
 </body>
 </html>
-
