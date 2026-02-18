@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 :root{
   --bg:#071622;
   --card:#0b1f2b;
@@ -235,3 +236,242 @@ input{
   border: 2px solid rgba(255,255,255,.9);
   box-shadow: 0 0 12px rgba(0,200,255,.55);
 }
+=======
+:root{
+  --bg:#071622;
+  --card:#0b1f2b;
+  --text:#eaf2ff;
+  --muted:rgba(234,242,255,.72);
+  --stroke:rgba(255,255,255,.08);
+  --pri:#00c8ff;
+  --danger:#ff3b3b;
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
+  background:
+    radial-gradient(1200px 600px at 20% 0%, rgba(0,200,255,.12), transparent 60%),
+    radial-gradient(900px 600px at 80% 20%, rgba(29,220,139,.10), transparent 60%),
+    var(--bg);
+  color:var(--text);
+}
+
+.app{max-width:1100px;margin:0 auto;padding:18px}
+
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 14px;border-radius:16px;
+  background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+  border:1px solid var(--stroke);
+  box-shadow:0 12px 40px rgba(0,0,0,.25);
+}
+
+.brand{display:flex;gap:10px;align-items:center}
+
+/* ✅ logo */
+.logoBox{
+  width:38px;height:38px;border-radius:12px;
+  display:grid;place-items:center;
+  background:rgba(0,200,255,.14);
+  border:1px solid rgba(0,200,255,.22);
+  overflow:hidden;
+}
+.logoImg{width:100%;height:100%;object-fit:cover;display:block}
+.logoFallbackText{display:none;font-weight:900}
+.logoFallback .logoFallbackText{display:block}
+.logoFallback .logoImg{display:none}
+
+.brandName{font-weight:900;letter-spacing:.4px}
+.brandTag{font-size:12px;color:var(--muted)}
+.topActions{display:flex;gap:10px;flex-wrap:wrap}
+
+.content{margin-top:16px;display:flex;flex-direction:column;gap:16px}
+
+.card{
+  background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+  border:1px solid var(--stroke);
+  border-radius:18px;
+  padding:16px;
+  box-shadow:0 14px 45px rgba(0,0,0,.28);
+}
+
+.hero{display:grid;grid-template-columns:1.2fr .8fr;gap:16px}
+.heroLeft h1{margin:0 0 8px 0}
+.muted{color:var(--muted)}
+.tiny{font-size:12px}
+
+.row{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}
+.pill{
+  font-size:12px;
+  padding:8px 10px;
+  border-radius:999px;
+  background:rgba(255,255,255,.04);
+  border:1px solid var(--stroke);
+}
+
+.ctaRow{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0 0 0}
+
+.btn{
+  border:1px solid var(--stroke);
+  background:rgba(255,255,255,.05);
+  color:var(--text);
+  padding:10px 12px;
+  border-radius:12px;
+  cursor:pointer;
+  transition:transform .06s ease, background .15s ease;
+}
+.btn:hover{background:rgba(255,255,255,.08)}
+.btn:active{transform:scale(.98)}
+.btn.primary{background:rgba(0,200,255,.16);border-color:rgba(0,200,255,.25)}
+.btn.ghost{background:transparent}
+.btn.danger{background:rgba(255,59,59,.14);border-color:rgba(255,59,59,.28)}
+.hidden{display:none !important}
+
+/* ✅ MAPA */
+.mapBox{
+  border-radius:16px;overflow:hidden;
+  border:1px solid var(--stroke);
+  background:rgba(0,0,0,.20);
+  height:290px;
+  position:relative;
+}
+.mapTop{
+  display:flex;justify-content:space-between;align-items:center;
+  gap:10px;
+  padding:10px 12px;background:rgba(0,0,0,.20);
+  border-bottom:1px solid var(--stroke)
+}
+.mapTitle{font-weight:800}
+.mapInfo{font-size:12px;color:var(--muted);flex:1}
+#map{height:240px;width:100%}
+
+/* ✅ realce das "pistas" no tile (deixa ruas mais claras) */
+.leaflet-tile{
+  filter: brightness(1.25) contrast(1.35);
+}
+
+/* ✅ neon no traçado */
+.route-neon{
+  filter: drop-shadow(0 0 8px rgba(0,200,255,.55)) drop-shadow(0 0 18px rgba(0,200,255,.25));
+}
+
+/* ✅ FULLSCREEN */
+.mapBox.fullscreen{
+  position:fixed !important;
+  inset:14px !important;
+  height:auto !important;
+  z-index:99999 !important;
+  border-radius:18px !important;
+  box-shadow:0 30px 90px rgba(0,0,0,.65);
+}
+.mapBox.fullscreen #map{
+  height: calc(100vh - 110px) !important;
+}
+.mapFullBtn{white-space:nowrap}
+.mapCloseBtn{white-space:nowrap}
+
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width: 900px){
+  .hero{grid-template-columns:1fr}
+  .grid{grid-template-columns:1fr}
+  .mapBox{height:320px}
+  #map{height:270px}
+}
+
+.cardTop{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.rowRight{display:flex;gap:10px;align-items:center}
+
+.rides{display:flex;flex-direction:column;gap:10px;margin-top:10px}
+.ride{
+  display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  padding:12px;border-radius:16px;
+  background:rgba(0,0,0,.18);
+  border:1px solid var(--stroke);
+}
+.rideTitle{font-weight:900;margin-bottom:6px}
+.rideMeta{font-size:12px;color:var(--muted)}
+
+.tagsRow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.tag{
+  font-size:11px;
+  padding:6px 9px;border-radius:999px;
+  border:1px solid var(--stroke);
+  background:rgba(255,255,255,.04)
+}
+.tag.open{border-color:rgba(255,176,32,.25);background:rgba(255,176,32,.10)}
+.tag.accepted{border-color:rgba(0,200,255,.28);background:rgba(0,200,255,.12)}
+.tag.racing{border-color:rgba(29,220,139,.25);background:rgba(29,220,139,.10)}
+.tag.done{border-color:rgba(255,255,255,.18);background:rgba(255,255,255,.06)}
+.tag.mine{border-color:rgba(255,255,255,.22);background:rgba(255,255,255,.08)}
+
+.form{display:flex;flex-direction:column;gap:10px;margin-top:10px}
+label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--muted)}
+input{
+  padding:10px 12px;border-radius:12px;
+  border:1px solid var(--stroke);
+  background:rgba(255,255,255,.04);
+  color:var(--text);
+  outline:none;
+}
+.formRow{display:flex;gap:10px;flex-wrap:wrap;margin-top:4px}
+
+.note{
+  margin-top:12px;
+  padding:12px;border-radius:16px;
+  border:1px dashed rgba(255,255,255,.14);
+  background:rgba(0,0,0,.14);
+}
+.noteTitle{font-weight:900;margin-bottom:6px}
+
+.footer{margin:14px 0 6px 0;text-align:center;font-size:12px;color:var(--muted)}
+
+.modal{
+  position:fixed;inset:0;background:rgba(0,0,0,.6);
+  display:grid;place-items:center;padding:16px;z-index:9999;
+}
+.modalCard{
+  width:min(560px, 100%);
+  border-radius:18px;
+  border:1px solid var(--stroke);
+  background:linear-gradient(180deg, rgba(15,34,48,.95), rgba(9,24,34,.95));
+  box-shadow:0 20px 70px rgba(0,0,0,.55);
+  overflow:hidden;
+}
+.modalHeader{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:12px 12px;border-bottom:1px solid var(--stroke);
+}
+.modalTitle{font-weight:900}
+.modalBody{padding:12px;color:var(--text)}
+.modalActions{padding:12px;border-top:1px solid var(--stroke);display:flex;justify-content:flex-end;gap:10px}
+/* =========================
+   SETA DO MOTORISTA (NEON)
+   ========================= */
+.driverArrow{
+  width: 22px;
+  height: 22px;
+  transform-origin: 50% 50%;
+  filter:
+    drop-shadow(0 0 8px rgba(0,200,255,.65))
+    drop-shadow(0 0 16px rgba(0,200,255,.25));
+}
+
+.driverArrow svg{
+  width:100%;
+  height:100%;
+  display:block;
+}
+
+/* opcional: deixa o “ponto” central mais bonito */
+.driverDot{
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(0,200,255,.95);
+  border: 2px solid rgba(255,255,255,.9);
+  box-shadow: 0 0 12px rgba(0,200,255,.55);
+}
+>>>>>>> 14f868c6a5873f315a9b7e481d55211f8f376ff3

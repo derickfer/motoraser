@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 <!doctype html>
 <html lang="pt-BR">
 <head>
@@ -169,3 +170,176 @@
   <script src="./app.js?v=3"></script>
 </body>
 </html>
+=======
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>MOTORASER</title>
+
+  <link rel="icon" href="./img/logo.png" />
+  <link rel="stylesheet" href="./styles.css?v=3" />
+
+  <!-- Leaflet -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
+</head>
+
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <!-- ✅ LOGO NO LUGAR DO "M" -->
+        <div class="logoBox">
+          <img class="logoImg" src="./img/logo.png" alt="MOTORASER" onerror="this.style.display='none'; this.parentElement.classList.add('logoFallback')" />
+          <div class="logoFallbackText">M</div>
+        </div>
+
+        <div class="brandText">
+          <div class="brandName">MOTORASER</div>
+          <div class="brandTag">Aposta Corrida (simulador) • 1x1</div>
+        </div>
+      </div>
+
+      <div class="topActions">
+        <button id="btnLocate" class="btn ghost" type="button">📍 Minha localização</button>
+        <button id="btnLogin" class="btn primary" type="button">Entrar com Google</button>
+        <button id="btnLogout" class="btn ghost hidden" type="button">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <section class="card hero">
+        <div class="heroLeft">
+          <h1>Aposta Corrida 1x1 🏁</h1>
+          <p class="muted">
+            Um piloto cria o desafio, outro aceita. Mesmo destino pros dois.
+            Quem chegar primeiro ganha (pontos).
+          </p>
+
+          <div class="row">
+            <div class="pill" id="locStatus">Localização: não carregada</div>
+            <div class="pill" id="userStatus">Usuário: visitante</div>
+          </div>
+
+          <div class="ctaRow">
+            <button id="btnCreateChallenge" class="btn primary" type="button">➕ Criar desafio</button>
+            <button id="btnRefresh" class="btn" type="button">🔄 Atualizar</button>
+          </div>
+
+          <div class="tiny muted">
+            *Simulador: “aposta” = pontos. (Sem dinheiro real.)
+          </div>
+
+          <div class="tiny muted" style="margin-top:10px">
+            ✅ Chegada automática: ao entrar no raio de <b>100m</b> do destino, marca sozinho.
+          </div>
+        </div>
+
+        <div class="heroRight">
+          <div class="mapBox" id="mapBox">
+            <div class="mapTop">
+              <div class="mapTitle">Mapa</div>
+              <div class="mapInfo" id="mapInfo">Toque em “Minha localização”.</div>
+
+              <button id="btnFullscreenMap" class="btn ghost mapFullBtn" type="button">⛶ Tela cheia</button>
+              <button id="btnCloseFullscreenMap" class="btn danger mapCloseBtn hidden" type="button">✕ Fechar</button>
+            </div>
+            <div id="map"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="grid">
+        <!-- ESQUERDA -->
+        <section class="card">
+          <div class="cardTop">
+            <h2>Desafios ao vivo</h2>
+            <div class="rowRight">
+              <span class="pill" id="liveCount">0 online</span>
+            </div>
+          </div>
+
+          <p class="muted">Abra um desafio, espere outro piloto aceitar e corram pro mesmo destino.</p>
+          <div id="challenges" class="rides"></div>
+
+          <div class="card" style="margin-top:14px">
+            <h2>Online agora</h2>
+            <p class="muted">Quem está no app nesse momento</p>
+            <div id="onlineUsers" class="rides"></div>
+          </div>
+        </section>
+
+        <!-- DIREITA -->
+        <section class="card">
+          <h2>Meu perfil</h2>
+          <p class="muted">Nome + telefone (salva no navegador e no Firebase quando logado).</p>
+
+          <form id="profileForm" class="form">
+            <label>
+              Nome
+              <input id="name" type="text" placeholder="Ex: Derick" autocomplete="name" />
+            </label>
+
+            <label>
+              Telefone
+              <input id="phone" type="tel" placeholder="Ex: (93) 9xxxx-xxxx" autocomplete="tel" />
+            </label>
+
+            <div class="formRow">
+              <button class="btn primary" type="submit">Salvar</button>
+              <button id="btnClear" class="btn ghost" type="button">Limpar</button>
+            </div>
+          </form>
+
+          <div class="note">
+            <div class="noteTitle">Como vence?</div>
+            <div class="muted">
+              Quando a corrida começar, o app monitora o GPS.
+              Ao entrar no raio de <b>100m</b> do destino, registra a chegada automaticamente.
+            </div>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <footer class="footer muted">
+      MOTORASER © <span id="year"></span> • Aposta Corrida (simulador)
+    </footer>
+  </div>
+
+  <!-- Modal -->
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modalCard">
+      <div class="modalHeader">
+        <div class="modalTitle" id="modalTitle">MOTORASER</div>
+        <button id="modalClose" class="btn ghost" type="button">✖</button>
+      </div>
+      <div id="modalBody" class="modalBody"></div>
+      <div class="modalActions">
+        <button id="modalOk" class="btn primary" type="button">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Firebase (compat) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+  <!-- Leaflet -->
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+  ></script>
+
+  <script src="./app.js?v=3"></script>
+</body>
+</html>
+>>>>>>> 14f868c6a5873f315a9b7e481d55211f8f376ff3
