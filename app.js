@@ -126,7 +126,7 @@ function initMap(){
     attribution: '&copy; OpenStreetMap &copy; CARTO'
   }).addTo(map);
 
-  meMarker = L.marker([fallback.lat, fallback.lng], { icon: driverArrowIcon() })
+  meMarker = L.marker([fallback.lat, fallback.lng])
   .addTo(map)
   .bindPopup("Você");
 setMarkerRotation(meMarker, meHeadingDeg);
