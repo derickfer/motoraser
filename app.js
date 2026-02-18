@@ -22,6 +22,7 @@ const btnLogout = $("btnLogout");
 const btnLocate = $("btnLocate");
 const btnCreateChallenge = $("btnCreateChallenge");
 const btnRefresh = $("btnRefresh");
+const btnMapFull = $("btnMapFull");
 
 const userStatus = $("userStatus");
 const locStatus = $("locStatus");
@@ -1049,4 +1050,5 @@ function presenceListen(){
     }, () => {
       if (onlineUsersEl) onlineUsersEl.innerHTML = `<div class="muted">Erro ao carregar online.</div>`;
     });
+
 }
