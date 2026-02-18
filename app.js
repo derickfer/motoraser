@@ -253,36 +253,13 @@ auth.onAuthStateChanged((user) => {
   if (user) autoStartLocation();
 });
 
-function setMyLocation(lat, lng){
-  lastLocation = { lat, lng };
+function setDestinationOnMap(dest){
+  lastDest = dest;
 
-  // ===== direção (bússola > gps heading > movimento) =====
-  if (compassEnabled && Number.isFinite(lastCompassDeg)) {
-    meHeadingDeg = normDeg(lastCompassDeg);
-  } else if (lastPosForBearing) {
-    const b = bearingDeg(lastPosForBearing, { lat, lng });
-    const alpha = 0.25;
-    let diff = ((b - meHeadingDeg + 540) % 360) - 180;
-    meHeadingDeg = normDeg(meHeadingDeg + alpha * diff);
-  }
+  if (destMarker) { map.removeLayer(destMarker); destMarker = null; }
+  destMarker = L.marker([dest.lat, dest.lng]).addTo(map).bindPopup("Destino");
 
-  setMarkerRotation(meMarker, meHeadingDeg);
-  lastPosForBearing = { lat, lng };
-
-  // marker + camera
-  if (meMarker) meMarker.setLatLng([lat, lng]);
-  if (map) map.setView([lat, lng], 15);
-
-  // UI
-  if (locStatus) locStatus.textContent = `Localização: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-  if (mapInfo) mapInfo.textContent = "Localização OK ✅";
-
-  // rota / chegada automática
-  if (typeof updateRouteIfReady === "function") updateRouteIfReady();
-  if (typeof autoArriveCheckAll === "function") autoArriveCheckAll();
-
-  // salva a localização
-  lastLocation = { lat, lng };
+  updateRouteIfReady();
 
   // ====== DIREÇÃO: prioridade 1 = bússola, 2 = heading do GPS, 3 = bearing pelo movimento ======
   if (compassEnabled && Number.isFinite(lastCompassDeg)) {
@@ -296,24 +273,27 @@ function setMyLocation(lat, lng){
     meHeadingDeg = normDeg(meHeadingDeg + alpha * diff);
   }
 
-  // atualiza rotação da seta
+  // ✅ gira a seta
   setMarkerRotation(meMarker, meHeadingDeg);
 
-  // guarda posição anterior p/ bearing
+  // ✅ guarda pra próxima vez (bearing)
   lastPosForBearing = { lat, lng };
 
-  // move marker e câmera
+  // ✅ move o marker no mapa (isso estava faltando)
   if (meMarker) meMarker.setLatLng([lat, lng]);
+
+  // ✅ centraliza (opcional, mas ajuda)
   if (map) map.setView([lat, lng], 15);
 
-  // UI
+  // ✅ UI
   if (locStatus) locStatus.textContent = `Localização: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
   if (mapInfo) mapInfo.textContent = "Localização OK ✅";
 
-  // atualiza rota + chegada
+  // ✅ agora sim a rota pode aparecer
   updateRouteIfReady();
   autoArriveCheckAll();
 }
+
 
 
 // =================== GPS: pegar 1 vez + Watch ===================
@@ -573,9 +553,24 @@ map.on("click", async (e) => {
   pickingMarker = L.marker([lat, lng]).addTo(map).bindPopup("Destino selecionado ✅").openPopup();
 
   setDestinationOnMap({ lat, lng });
-await updateRouteIfReady();
 
-  setDestinationOnMap({ lat, lng });
+  // ✅ tenta rota só se já tiver GPS
+  try { await updateRouteIfReady(); } catch(e){}
+
+  try{
+    mapInfo.textContent = "Buscando nome do local...";
+    const place = await reverseGeocodeOSM(lat, lng);
+    lastDestName = place || "";
+  }catch(err){
+    lastDestName = "";
+  }
+
+  if (typeof pickingCallback === "function") {
+    pickingCallback({ lat, lng, name: lastDestName });
+  }
+
+  stopPickOnMap();
+
 if (typeof updateRouteIfReady === "function") {
   try { await updateRouteIfReady(); } catch(e){}
 }
