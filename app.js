@@ -97,16 +97,17 @@ async function loadUserDoc(uid){
   return snap.exists ? (snap.data() || {}) : null;
 }
 
-// ✅ estados globais que estavam faltando
+// ✅ estados globais
 let lastDest = null;        // {lat, lng}
 let lastDestName = "";      // texto do destino
 let routeLayer = null;      // camada da rota (geoJSON)
+let lastLocation = null;    // ✅ (faltava aqui, mas só UMA vez)
 
 // ====== SETA / DIREÇÃO ======
-let meHeadingDeg = 0;             // ângulo atual (graus)
-let lastPosForBearing = null;     // última posição pra calcular direção
-let compassEnabled = false;       // se bússola do aparelho foi ativada
-let lastCompassDeg = null;        // leitura da bússola (quando existir)
+let meHeadingDeg = 0;
+let lastPosForBearing = null;
+let compassEnabled = false;
+let lastCompassDeg = null;
 
 // ✅ GPS watch
 let gpsWatchId = null;
@@ -117,7 +118,7 @@ const arrivingNow = new Set();
 // ✅ tile escuro (SEM API KEY)
 let tileLayer = null;
 
-// =================== SETA / ROTATION HELPERS (ADD) ===================
+// =================== SETA / ROTATION HELPERS ===================
 
 // normaliza ângulo 0..359
 function normDeg(d){
@@ -180,13 +181,10 @@ function setMarkerRotation(marker, deg){
   const arrow = el.querySelector?.(".driverArrow");
   if (!arrow) return;
   arrow.style.transform = `rotate(${normDeg(deg)}deg)`;
+} // ✅ (corrigido: FECHOU a função e removeu duplicados de dentro)
 
-// =================== MAP STATE (FALTAVA ISSO) ===================
-let lastDest = null;
-let lastDestName = "";
-let routeLayer = null;
-let lastLocation = null;
-}
+// =================== MAP ===================
+let map, meMarker, destMarker;
 
 function initMap(){
   const fallback = { lat: -3.2041, lng: -52.2111 }; // Altamira
@@ -199,15 +197,17 @@ function initMap(){
   }).addTo(map);
 
   meMarker = L.marker([fallback.lat, fallback.lng], { icon: driverArrowIcon() })
-  .addTo(map)
-  .bindPopup("Você");
-setMarkerRotation(meMarker, meHeadingDeg);
+    .addTo(map)
+    .bindPopup("Você");
+
+  setMarkerRotation(meMarker, meHeadingDeg);
 
   destMarker = null;
 
   mapInfo.textContent = "Toque em “Minha localização”.";
 }
 initMap();
+
 function setMyLocation(lat, lng){
   lastLocation = { lat, lng };
 
@@ -221,7 +221,6 @@ function setMyLocation(lat, lng){
   lastPosForBearing = {lat,lng};
 
   meMarker.setLatLng([lat,lng]);
-
   map.setView([lat,lng], 15);
 
   locStatus.textContent = `Localização: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
@@ -261,17 +260,12 @@ async function autoStartLocation(){
   }
 }
 
-
 // ✅ tenta iniciar quando a página carregar
 window.addEventListener("load", () => {
   autoStartLocation();
 });
 
 // ✅ e também quando o usuário logar (pra garantir)
-auth.onAuthStateChanged((user) => {
-  if (user) autoStartLocation();
-});
-
 function setDestinationOnMap(dest){
   lastDest = dest;
 
@@ -285,40 +279,25 @@ function setDestinationOnMap(dest){
 
   updateRouteIfReady();
 
-  // ====== DIREÇÃO: prioridade 1 = bússola, 2 = heading do GPS, 3 = bearing pelo movimento ======
+  // ====== DIREÇÃO ======
   if (compassEnabled && Number.isFinite(lastCompassDeg)) {
     meHeadingDeg = normDeg(lastCompassDeg);
   } else if (lastPosForBearing) {
-    const b = bearingDeg(lastPosForBearing, { lat, lng });
+    const b = bearingDeg(lastPosForBearing, { lat: dest.lat, lng: dest.lng }); // ✅ (corrigido)
 
-    // suaviza sem “pulo” 359→0
     const alpha = 0.25;
-    let diff = ((b - meHeadingDeg + 540) % 360) - 180; // -180..180
+    let diff = ((b - meHeadingDeg + 540) % 360) - 180;
     meHeadingDeg = normDeg(meHeadingDeg + alpha * diff);
   }
 
-  // ✅ gira a seta
   setMarkerRotation(meMarker, meHeadingDeg);
 
-  // ✅ guarda pra próxima vez (bearing)
-  lastPosForBearing = { lat, lng };
+  // ✅ (corrigido: não existe lat/lng aqui, então usa dest.*)
+  lastPosForBearing = { lat: dest.lat, lng: dest.lng };
 
-  // ✅ move o marker no mapa (isso estava faltando)
-  if (meMarker) meMarker.setLatLng([lat, lng]);
-
-  // ✅ centraliza (opcional, mas ajuda)
-  if (map) map.setView([lat, lng], 15);
-
-  // ✅ UI
-  if (locStatus) locStatus.textContent = `Localização: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-  if (mapInfo) mapInfo.textContent = "Localização OK ✅";
-
-  // ✅ agora sim a rota pode aparecer
   updateRouteIfReady();
   autoArriveCheckAll();
 }
-
-
 
 // =================== GPS: pegar 1 vez + Watch ===================
 async function getLocationOnce(){
@@ -347,6 +326,7 @@ function startGpsWatch(){
   if (gpsWatchId != null) return;
   if (!navigator.geolocation) return;
 
+  // ✅ (corrigido: você tinha DOIS watchPosition duplicados)
   gpsWatchId = navigator.geolocation.watchPosition(
     (pos) => {
       const lat = pos.coords.latitude;
@@ -364,24 +344,6 @@ function startGpsWatch(){
     },
     { enableHighAccuracy:true, maximumAge:5000, timeout:20000 }
   );
-
-  gpsWatchId = navigator.geolocation.watchPosition(
-    (pos) => {
-      const lat = pos.coords.latitude;
-      const lng = pos.coords.longitude;
-      const heading = pos.coords.heading; // pode vir null
-if (!compassEnabled && Number.isFinite(heading)) {
-  // quando GPS fornece (normalmente em movimento)
-  meHeadingDeg = normDeg(heading);
-}
-
-setMyLocation(lat, lng);
-    },
-    (err) => {
-      console.log("GPS watch error:", err);
-    },
-    { enableHighAccuracy:true, maximumAge:5000, timeout:20000 }
-  );
 }
 
 function stopGpsWatch(){
@@ -392,26 +354,24 @@ function stopGpsWatch(){
 
 btnLocate.onclick = async () => {
   try {
-    await enableCompassIfPossible(); // ✅ tenta ligar bússola
+    await enableCompassIfPossible();
     await getLocationOrAsk();
-    startGpsWatch(); // ✅ liga GPS sempre
+    startGpsWatch();
   } catch (e) {
     openModal("Localização", `<p class="muted">${escapeHtml(e?.message || String(e))}</p>`);
   }
 };
+
 async function enableCompassIfPossible(){
   try{
     if (!("DeviceOrientationEvent" in window)) return;
 
-    // iOS pede permissão via requestPermission
     if (typeof DeviceOrientationEvent.requestPermission === "function") {
       const res = await DeviceOrientationEvent.requestPermission();
       if (res !== "granted") return;
     }
 
     window.addEventListener("deviceorientation", (e) => {
-      // alpha: 0-360 (aprox), direção do aparelho
-      // em alguns casos precisa inverter; aqui já fica bom na maioria
       if (e && Number.isFinite(e.alpha)) {
         lastCompassDeg = normDeg(e.alpha);
       }
@@ -419,7 +379,6 @@ async function enableCompassIfPossible(){
 
     compassEnabled = true;
   }catch(e){
-    // se falhar, segue só com GPS/bearing
     compassEnabled = false;
   }
 }
@@ -437,7 +396,6 @@ function setMapFullscreen(on){
     btnCloseFullscreenMap.classList.add("hidden");
   }
 
-  // Leaflet precisa recalcular
   setTimeout(() => {
     try { map.invalidateSize(true); } catch(e){}
   }, 120);
@@ -498,7 +456,6 @@ function clearRoute(){
   }
 }
 
-// ✅ AGORA EXISTE (corrige seu erro)
 async function updateRouteIfReady(){
   if (!lastLocation || !lastDest) return;
 
@@ -566,46 +523,6 @@ function stopPickOnMap() {
 
   closeModal();
 }
-
-map.on("click", async (e) => {
-  if (!pickingMode) return;
-
-  const lat = e.latlng.lat;
-  const lng = e.latlng.lng;
-
-  if (pickingMarker) map.removeLayer(pickingMarker);
-  pickingMarker = L.marker([lat, lng]).addTo(map).bindPopup("Destino selecionado ✅").openPopup();
-
-  setDestinationOnMap({ lat, lng });
-
-  // ✅ tenta rota só se já tiver GPS
-  try { await updateRouteIfReady(); } catch(e){}
-
-  try{
-    mapInfo.textContent = "Buscando nome do local...";
-    const place = await reverseGeocodeOSM(lat, lng);
-    lastDestName = place || "";
-  }catch(err){
-    lastDestName = "";
-  }
-
-  if (typeof pickingCallback === "function") {
-    pickingCallback({ lat, lng, name: lastDestName });
-  }
-
-  stopPickOnMap();
-
-if (typeof updateRouteIfReady === "function") {
-  try { await updateRouteIfReady(); } catch(e){}
-}
-
-
-  if (typeof pickingCallback === "function") {
-    pickingCallback({ lat, lng, name: lastDestName });
-  }
-
-  stopPickOnMap();
-});
 
 // =================== AUTH ===================
 btnLogin.onclick = async () => {
@@ -712,7 +629,7 @@ btnCreateChallenge.onclick = async () => {
     btnPickMap.onclick = () => {
       closeModal();
       startPickOnMap(({ lat, lng, name }) => {
-        btnCreateChallenge.onclick();
+        btnCreateChallenge.click();
 
         setTimeout(() => {
           const latInput = document.getElementById("cLat");
