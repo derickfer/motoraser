@@ -139,6 +139,23 @@ initMap();
 
 function setMyLocation(lat, lng){
   lastLocation = { lat, lng };
+  // ====== DIREÇÃO: prioridade 1 = bússola (se ligada), 2 = heading do GPS, 3 = bearing pelo movimento ======
+if (compassEnabled && Number.isFinite(lastCompassDeg)) {
+  meHeadingDeg = normDeg(lastCompassDeg);
+} else if (lastPosForBearing) {
+  // se tiver posição anterior, calcula a direção do movimento
+  const b = bearingDeg(lastPosForBearing, { lat, lng });
+  // suaviza pra não “tremelicar”
+  const alpha = 0.25;
+  meHeadingDeg = normDeg(meHeadingDeg + alpha * (b - meHeadingDeg));
+}
+
+// atualiza a rotação da seta
+setMarkerRotation(meMarker, meHeadingDeg);
+
+// guarda pra próxima vez (bearing)
+lastPosForBearing = { lat, lng };
+
   meMarker.setLatLng([lat, lng]);
   map.setView([lat, lng], 15);
   locStatus.textContent = `Localização: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
@@ -186,7 +203,13 @@ function startGpsWatch(){
     (pos) => {
       const lat = pos.coords.latitude;
       const lng = pos.coords.longitude;
-      setMyLocation(lat, lng);
+      const heading = pos.coords.heading; // pode vir null
+if (!compassEnabled && Number.isFinite(heading)) {
+  // quando GPS fornece (normalmente em movimento)
+  meHeadingDeg = normDeg(heading);
+}
+
+setMyLocation(lat, lng);
     },
     (err) => {
       console.log("GPS watch error:", err);
@@ -203,12 +226,37 @@ function stopGpsWatch(){
 
 btnLocate.onclick = async () => {
   try {
+    await enableCompassIfPossible(); // ✅ tenta ligar bússola
     await getLocationOrAsk();
     startGpsWatch(); // ✅ liga GPS sempre
   } catch (e) {
     openModal("Localização", `<p class="muted">${escapeHtml(e?.message || String(e))}</p>`);
   }
 };
+async function enableCompassIfPossible(){
+  try{
+    if (!("DeviceOrientationEvent" in window)) return;
+
+    // iOS pede permissão via requestPermission
+    if (typeof DeviceOrientationEvent.requestPermission === "function") {
+      const res = await DeviceOrientationEvent.requestPermission();
+      if (res !== "granted") return;
+    }
+
+    window.addEventListener("deviceorientation", (e) => {
+      // alpha: 0-360 (aprox), direção do aparelho
+      // em alguns casos precisa inverter; aqui já fica bom na maioria
+      if (e && Number.isFinite(e.alpha)) {
+        lastCompassDeg = normDeg(e.alpha);
+      }
+    }, true);
+
+    compassEnabled = true;
+  }catch(e){
+    // se falhar, segue só com GPS/bearing
+    compassEnabled = false;
+  }
+}
 
 // =================== FULLSCREEN MAP ===================
 function setMapFullscreen(on){
