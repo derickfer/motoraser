@@ -219,22 +219,18 @@ async function autoStartLocation(){
   autoStarted = true;
 
   try{
-    // tenta ligar bússola se existir
     if (typeof enableCompassIfPossible === "function") {
       await enableCompassIfPossible();
     }
 
-    // pega localização (1 vez)
     if (typeof getLocationOrAsk === "function") {
       await getLocationOrAsk();
     }
 
-    // liga atualização contínua (watch)
     if (typeof startGpsWatch === "function") {
       startGpsWatch();
     }
 
-    // tenta desenhar rota se tiver destino
     if (typeof updateRouteIfReady === "function") {
       try { await updateRouteIfReady(); } catch(e){}
     }
@@ -246,10 +242,8 @@ async function autoStartLocation(){
   }
 }
 
+
 // ✅ tenta iniciar quando a página carregar
-window.addEventListener("load", () => {
-  autoStartLocation();
-  // ✅ tenta iniciar automaticamente quando abrir o site
 window.addEventListener("load", () => {
   autoStartLocation();
 });
@@ -257,7 +251,6 @@ window.addEventListener("load", () => {
 // ✅ e também quando o usuário logar (pra garantir)
 auth.onAuthStateChanged((user) => {
   if (user) autoStartLocation();
-});
 });
 
 function setMyLocation(lat, lng){
@@ -349,6 +342,24 @@ async function getLocationOrAsk(){
 function startGpsWatch(){
   if (gpsWatchId != null) return;
   if (!navigator.geolocation) return;
+
+  gpsWatchId = navigator.geolocation.watchPosition(
+    (pos) => {
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+
+      const heading = pos.coords.heading; // pode vir null
+      if (!compassEnabled && Number.isFinite(heading)) {
+        meHeadingDeg = normDeg(heading);
+      }
+
+      setMyLocation(lat, lng);
+    },
+    (err) => {
+      console.log("GPS watch error:", err);
+    },
+    { enableHighAccuracy:true, maximumAge:5000, timeout:20000 }
+  );
 
   gpsWatchId = navigator.geolocation.watchPosition(
     (pos) => {
@@ -564,13 +575,11 @@ map.on("click", async (e) => {
   setDestinationOnMap({ lat, lng });
 await updateRouteIfReady();
 
-  try{
-    mapInfo.textContent = "Buscando nome do local...";
-    const place = await reverseGeocodeOSM(lat, lng);
-    lastDestName = place || "";
-  }catch(err){
-    lastDestName = "";
-  }
+  setDestinationOnMap({ lat, lng });
+if (typeof updateRouteIfReady === "function") {
+  try { await updateRouteIfReady(); } catch(e){}
+}
+
 
   if (typeof pickingCallback === "function") {
     pickingCallback({ lat, lng, name: lastDestName });
@@ -1284,6 +1293,7 @@ function presenceListen(){
 // =================== AUTH STATE (ÚNICO) ===================
 auth.onAuthStateChanged(async (user) => {
   if (user) {
+    autoStartLocation();
     btnLogin.classList.add("hidden");
     btnLogout.classList.remove("hidden");
     userStatus.textContent = `Usuário: ${user.displayName || "Sem nome"}`;
