@@ -202,6 +202,45 @@ setMarkerRotation(meMarker, meHeadingDeg);
   mapInfo.textContent = "Toque em “Minha localização”.";
 }
 initMap();
+// =================== AUTO START (LOCALIZAÇÃO) ===================
+let autoStarted = false;
+
+async function autoStartLocation(){
+  if (autoStarted) return;
+  autoStarted = true;
+
+  try{
+    // tenta ligar bússola se existir
+    if (typeof enableCompassIfPossible === "function") {
+      await enableCompassIfPossible();
+    }
+
+    // pega localização (1 vez)
+    if (typeof getLocationOrAsk === "function") {
+      await getLocationOrAsk();
+    }
+
+    // liga atualização contínua (watch)
+    if (typeof startGpsWatch === "function") {
+      startGpsWatch();
+    }
+
+    // tenta desenhar rota se tiver destino
+    if (typeof updateRouteIfReady === "function") {
+      try { await updateRouteIfReady(); } catch(e){}
+    }
+
+  }catch(e){
+    console.log("autoStartLocation:", e?.message || e);
+    const el = document.getElementById("mapInfo");
+    if (el) el.textContent = "Permita a localização para iniciar automaticamente.";
+  }
+}
+
+// ✅ tenta iniciar quando a página carregar
+window.addEventListener("load", () => {
+  autoStartLocation();
+});
 
 function setMyLocation(lat, lng){
   // salva a localização
