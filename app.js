@@ -116,6 +116,71 @@ const arrivingNow = new Set();
 // ✅ tile escuro (SEM API KEY)
 let tileLayer = null;
 
+// =================== SETA / ROTATION HELPERS (ADD) ===================
+
+// normaliza ângulo 0..359
+function normDeg(d){
+  let x = Number(d);
+  if (!Number.isFinite(x)) return 0;
+  x = x % 360;
+  if (x < 0) x += 360;
+  return x;
+}
+
+// calcula direção do movimento (bearing) entre dois pontos
+function bearingDeg(a, b){
+  const toRad = (x) => x * Math.PI / 180;
+  const toDeg = (x) => x * 180 / Math.PI;
+
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const dLng = toRad(b.lng - a.lng);
+
+  const y = Math.sin(dLng) * Math.cos(lat2);
+  const x = Math.cos(lat1)*Math.sin(lat2) - Math.sin(lat1)*Math.cos(lat2)*Math.cos(dLng);
+
+  let brng = toDeg(Math.atan2(y, x));
+  return normDeg(brng);
+}
+
+// ícone de seta do motorista (rotacionável)
+function driverArrowIcon(){
+  return L.divIcon({
+    className: "driverWrap",
+    html: `
+      <div class="driverArrow" style="
+        width:28px;height:28px;display:grid;place-items:center;
+        transform: rotate(0deg);
+        transition: transform .08s linear;
+        filter: drop-shadow(0 2px 10px rgba(0,0,0,.55));
+      ">
+        <svg width="28" height="28" viewBox="0 0 64 64" aria-hidden="true">
+          <defs>
+            <linearGradient id="drvG" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#00c8ff"/>
+              <stop offset="1" stop-color="#1ddc8b"/>
+            </linearGradient>
+          </defs>
+          <path d="M32 4 L54 58 L32 48 L10 58 Z" fill="url(#drvG)" stroke="rgba(255,255,255,.8)" stroke-width="2"/>
+          <path d="M32 10 L45 50 L32 44 L19 50 Z" fill="rgba(0,0,0,.25)"/>
+        </svg>
+      </div>
+    `,
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+  });
+}
+
+// rotaciona a seta do marker (sem plugin)
+function setMarkerRotation(marker, deg){
+  if (!marker) return;
+  const el = marker.getElement?.();
+  if (!el) return;
+  const arrow = el.querySelector?.(".driverArrow");
+  if (!arrow) return;
+  arrow.style.transform = `rotate(${normDeg(deg)}deg)`;
+}
+
 function initMap(){
   const fallback = { lat: -3.2041, lng: -52.2111 }; // Altamira
   map = L.map("map", { zoomControl: true }).setView([fallback.lat, fallback.lng], 13);
@@ -126,7 +191,7 @@ function initMap(){
     attribution: '&copy; OpenStreetMap &copy; CARTO'
   }).addTo(map);
 
-  meMarker = L.marker([fallback.lat, fallback.lng])
+  meMarker = L.marker([fallback.lat, fallback.lng], { icon: driverArrowIcon() })
   .addTo(map)
   .bindPopup("Você");
 setMarkerRotation(meMarker, meHeadingDeg);
@@ -194,6 +259,9 @@ async function getLocationOrAsk(){
   setMyLocation(p.lat, p.lng);
   return lastLocation;
 }
+const alpha = 0.25;
+let diff = ((b - meHeadingDeg + 540) % 360) - 180; // -180..180
+meHeadingDeg = normDeg(meHeadingDeg + alpha * diff);
 
 function startGpsWatch(){
   if (gpsWatchId != null) return;
