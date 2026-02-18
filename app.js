@@ -181,10 +181,7 @@ function setMarkerRotation(marker, deg){
   const arrow = el.querySelector?.(".driverArrow");
   if (!arrow) return;
   arrow.style.transform = `rotate(${normDeg(deg)}deg)`;
-} // ✅ (corrigido: FECHOU a função e removeu duplicados de dentro)
-
-// =================== MAP ===================
-let map, meMarker, destMarker;
+}
 
 function initMap(){
   const fallback = { lat: -3.2041, lng: -52.2111 }; // Altamira
