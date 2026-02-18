@@ -203,16 +203,16 @@ setMarkerRotation(meMarker, meHeadingDeg);
 initMap();
 
 function setMyLocation(lat, lng){
-  lastLocation = { lat, lng };
-  // ====== DIREÇÃO: prioridade 1 = bússola (se ligada), 2 = heading do GPS, 3 = bearing pelo movimento ======
+// ====== DIREÇÃO: prioridade 1 = bússola, 2 = heading do GPS, 3 = bearing pelo movimento ======
 if (compassEnabled && Number.isFinite(lastCompassDeg)) {
   meHeadingDeg = normDeg(lastCompassDeg);
 } else if (lastPosForBearing) {
-  // se tiver posição anterior, calcula a direção do movimento
-  const b = bearingDeg(lastPosForBearing, { lat, lng });
-  // suaviza pra não “tremelicar”
+  const b = bearingDeg(lastPosForBearing, { lat, lng }); // ✅ b definido aqui
+
+  // suaviza sem “pulo” 359→0
   const alpha = 0.25;
-  meHeadingDeg = normDeg(meHeadingDeg + alpha * (b - meHeadingDeg));
+  let diff = ((b - meHeadingDeg + 540) % 360) - 180; // -180..180
+  meHeadingDeg = normDeg(meHeadingDeg + alpha * diff);
 }
 
 // atualiza a rotação da seta
@@ -220,21 +220,6 @@ setMarkerRotation(meMarker, meHeadingDeg);
 
 // guarda pra próxima vez (bearing)
 lastPosForBearing = { lat, lng };
-
-  meMarker.setLatLng([lat, lng]);
-  map.setView([lat, lng], 15);
-  locStatus.textContent = `Localização: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-  mapInfo.textContent = "Localização OK ✅";
-
-  updateRouteIfReady();     // ✅ existe
-  autoArriveCheckAll();     // ✅ chega sozinho
-}
-
-function setDestinationOnMap(dest){
-  lastDest = dest;
-  if (destMarker) { map.removeLayer(destMarker); destMarker = null; }
-  destMarker = L.marker([dest.lat, dest.lng]).addTo(map).bindPopup("Destino");
-  updateRouteIfReady();     // ✅ existe
 }
 
 // =================== GPS: pegar 1 vez + Watch ===================
@@ -259,9 +244,6 @@ async function getLocationOrAsk(){
   setMyLocation(p.lat, p.lng);
   return lastLocation;
 }
-const alpha = 0.25;
-let diff = ((b - meHeadingDeg + 540) % 360) - 180; // -180..180
-meHeadingDeg = normDeg(meHeadingDeg + alpha * diff);
 
 function startGpsWatch(){
   if (gpsWatchId != null) return;
