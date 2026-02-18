@@ -1,3 +1,30 @@
+// =================== FIX: GARANTE QUE EXISTE (antes de tudo) ===================
+function updateRouteIfReady(){ /* fallback: evita crash antes da função real */ }
+// ============================================================================== 
+async function updateRouteIfReady(){
+  if (!lastLocation || !lastDest || !map) return;
+
+  try{
+    if (mapInfo) mapInfo.textContent = "Calculando rota...";
+    const r = await fetchRouteOSRM(lastLocation, lastDest);
+
+    clearRoute();
+
+    routeLayer = L.geoJSON(r.geometry, {
+      style: { weight: 5, opacity: 0.95, className: "route-neon" }
+    }).addTo(map);
+
+    const bounds = routeLayer.getBounds();
+    if (bounds && bounds.isValid()) map.fitBounds(bounds.pad(0.2));
+
+    const km = (r.distance / 1000).toFixed(2);
+    const min = Math.max(1, Math.round(r.duration / 60));
+    if (mapInfo) mapInfo.textContent = `Rota: ${km} km • ~${min} min ✅`;
+  }catch(e){
+    if (mapInfo) mapInfo.textContent = "Rota indisponível (ok para demo).";
+  }
+}
+
 function updateRouteIfReady(){ /* noop */ }
 
 // ✅ garante que existe (evita quebrar o app se ainda não carregou a função real)
