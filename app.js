@@ -180,6 +180,15 @@ function setMarkerRotation(marker, deg){
   const arrow = el.querySelector?.(".driverArrow");
   if (!arrow) return;
   arrow.style.transform = `rotate(${normDeg(deg)}deg)`;
+
+// =================== MAP STATE (FALTAVA ISSO) ===================
+let lastDest = null;        // { lat, lng }
+let lastDestName = "";      // string
+let routeLayer = null;      // layer da rota
+
+// se lastLocation não existir ainda em nenhum lugar, cria aqui:
+if (typeof lastLocation === "undefined")
+  var lastLocation = null;
 }
 
 function initMap(){
@@ -240,9 +249,45 @@ async function autoStartLocation(){
 // ✅ tenta iniciar quando a página carregar
 window.addEventListener("load", () => {
   autoStartLocation();
+  // ✅ tenta iniciar automaticamente quando abrir o site
+window.addEventListener("load", () => {
+  autoStartLocation();
+});
+
+// ✅ e também quando o usuário logar (pra garantir)
+auth.onAuthStateChanged((user) => {
+  if (user) autoStartLocation();
+});
 });
 
 function setMyLocation(lat, lng){
+  lastLocation = { lat, lng };
+
+  // ===== direção (bússola > gps heading > movimento) =====
+  if (compassEnabled && Number.isFinite(lastCompassDeg)) {
+    meHeadingDeg = normDeg(lastCompassDeg);
+  } else if (lastPosForBearing) {
+    const b = bearingDeg(lastPosForBearing, { lat, lng });
+    const alpha = 0.25;
+    let diff = ((b - meHeadingDeg + 540) % 360) - 180;
+    meHeadingDeg = normDeg(meHeadingDeg + alpha * diff);
+  }
+
+  setMarkerRotation(meMarker, meHeadingDeg);
+  lastPosForBearing = { lat, lng };
+
+  // marker + camera
+  if (meMarker) meMarker.setLatLng([lat, lng]);
+  if (map) map.setView([lat, lng], 15);
+
+  // UI
+  if (locStatus) locStatus.textContent = `Localização: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  if (mapInfo) mapInfo.textContent = "Localização OK ✅";
+
+  // rota / chegada automática
+  if (typeof updateRouteIfReady === "function") updateRouteIfReady();
+  if (typeof autoArriveCheckAll === "function") autoArriveCheckAll();
+
   // salva a localização
   lastLocation = { lat, lng };
 
