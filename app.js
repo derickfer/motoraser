@@ -478,6 +478,7 @@ map.on("click", async (e) => {
   pickingMarker = L.marker([lat, lng]).addTo(map).bindPopup("Destino selecionado ✅").openPopup();
 
   setDestinationOnMap({ lat, lng });
+await updateRouteIfReady();
 
   try{
     mapInfo.textContent = "Buscando nome do local...";
