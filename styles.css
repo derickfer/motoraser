@@ -1,15 +1,11 @@
 :root{
   --bg:#071622;
   --card:#0b1f2b;
-  --card2:#0a1a25;
   --text:#eaf2ff;
   --muted:rgba(234,242,255,.72);
   --stroke:rgba(255,255,255,.08);
-  --glow:rgba(0,208,255,.18);
   --pri:#00c8ff;
   --danger:#ff3b3b;
-  --ok:#1ddc8b;
-  --warn:#ffb020;
 }
 
 *{box-sizing:border-box}
@@ -17,13 +13,15 @@ html,body{height:100%}
 body{
   margin:0;
   font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
-  background:radial-gradient(1200px 600px at 20% 0%, rgba(0,200,255,.12), transparent 60%),
-             radial-gradient(900px 600px at 80% 20%, rgba(29,220,139,.10), transparent 60%),
-             var(--bg);
+  background:
+    radial-gradient(1200px 600px at 20% 0%, rgba(0,200,255,.12), transparent 60%),
+    radial-gradient(900px 600px at 80% 20%, rgba(29,220,139,.10), transparent 60%),
+    var(--bg);
   color:var(--text);
 }
 
 .app{max-width:1100px;margin:0 auto;padding:18px}
+
 .topbar{
   display:flex;align-items:center;justify-content:space-between;
   padding:14px 14px;border-radius:16px;
@@ -31,19 +29,28 @@ body{
   border:1px solid var(--stroke);
   box-shadow:0 12px 40px rgba(0,0,0,.25);
 }
+
 .brand{display:flex;gap:10px;align-items:center}
-.logo{
+
+/* ✅ logo */
+.logoBox{
   width:38px;height:38px;border-radius:12px;
   display:grid;place-items:center;
   background:rgba(0,200,255,.14);
   border:1px solid rgba(0,200,255,.22);
-  font-weight:800;
+  overflow:hidden;
 }
+.logoImg{width:100%;height:100%;object-fit:cover;display:block}
+.logoFallbackText{display:none;font-weight:900}
+.logoFallback .logoFallbackText{display:block}
+.logoFallback .logoImg{display:none}
+
 .brandName{font-weight:900;letter-spacing:.4px}
 .brandTag{font-size:12px;color:var(--muted)}
 .topActions{display:flex;gap:10px;flex-wrap:wrap}
 
 .content{margin-top:16px;display:flex;flex-direction:column;gap:16px}
+
 .card{
   background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
   border:1px solid var(--stroke);
@@ -51,6 +58,7 @@ body{
   padding:16px;
   box-shadow:0 14px 45px rgba(0,0,0,.28);
 }
+
 .hero{display:grid;grid-template-columns:1.2fr .8fr;gap:16px}
 .heroLeft h1{margin:0 0 8px 0}
 .muted{color:var(--muted)}
@@ -83,34 +91,49 @@ body{
 .btn.danger{background:rgba(255,59,59,.14);border-color:rgba(255,59,59,.28)}
 .hidden{display:none !important}
 
-/* MAP */
+/* ✅ MAPA */
 .mapBox{
   border-radius:16px;overflow:hidden;
   border:1px solid var(--stroke);
   background:rgba(0,0,0,.20);
   height:290px;
+  position:relative;
 }
 .mapTop{
   display:flex;justify-content:space-between;align-items:center;
+  gap:10px;
   padding:10px 12px;background:rgba(0,0,0,.20);
   border-bottom:1px solid var(--stroke)
 }
 .mapTitle{font-weight:800}
-.mapInfo{font-size:12px;color:var(--muted)}
+.mapInfo{font-size:12px;color:var(--muted);flex:1}
 #map{height:240px;width:100%}
 
-.mapTopRight{
-  display:flex;
-  align-items:center;
-  gap:10px;
-}
-.tinyBtn{
-  padding:7px 10px;
-  border-radius:10px;
-  font-size:12px;
+/* ✅ realce das "pistas" no tile (deixa ruas mais claras) */
+.leaflet-tile{
+  filter: brightness(1.25) contrast(1.35);
 }
 
-/* Layout */
+/* ✅ neon no traçado */
+.route-neon{
+  filter: drop-shadow(0 0 8px rgba(0,200,255,.55)) drop-shadow(0 0 18px rgba(0,200,255,.25));
+}
+
+/* ✅ FULLSCREEN */
+.mapBox.fullscreen{
+  position:fixed !important;
+  inset:14px !important;
+  height:auto !important;
+  z-index:99999 !important;
+  border-radius:18px !important;
+  box-shadow:0 30px 90px rgba(0,0,0,.65);
+}
+.mapBox.fullscreen #map{
+  height: calc(100vh - 110px) !important;
+}
+.mapFullBtn{white-space:nowrap}
+.mapCloseBtn{white-space:nowrap}
+
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 @media (max-width: 900px){
   .hero{grid-template-columns:1fr}
@@ -131,6 +154,7 @@ body{
 }
 .rideTitle{font-weight:900;margin-bottom:6px}
 .rideMeta{font-size:12px;color:var(--muted)}
+
 .tagsRow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .tag{
   font-size:11px;
@@ -184,136 +208,3 @@ input{
 .modalTitle{font-weight:900}
 .modalBody{padding:12px;color:var(--text)}
 .modalActions{padding:12px;border-top:1px solid var(--stroke);display:flex;justify-content:flex-end;gap:10px}
-
-/* ✅ TELA CHEIA DO MAPA (CSS) */
-.mapBox.isFullscreen{
-  position:fixed;
-  inset:12px;
-  height:auto !important;
-  z-index:99999;
-  border-radius:18px;
-  box-shadow:0 30px 120px rgba(0,0,0,.65);
-}
-.mapBox.isFullscreen #map{
-  height:calc(100vh - 12px - 12px - 52px) !important; /* viewport - margens - topo */
-}
-/* =========================
-   MAPA DARK com RUAS MAIS CLARAS (CSS FILTER)
-   ========================= */
-#map .leaflet-tile {
-  filter: brightness(1.35) contrast(1.35) saturate(0.9);
-}
-
-/* melhora “nitidez” e reduz aquele cinza chapado */
-#map .leaflet-container {
-  background: #000;
-}
-
-/* se usar tela cheia, mantém o mapa certinho */
-.mapFullscreen #map {
-  height: 100% !important;
-}
-/* =========================
-   RUAS / PISTAS MAIS CLARAS NO MAPA DARK
-   ========================= */
-
-/* Clareia os tiles e puxa contraste (deixa rua/pista aparecer mais) */
-#map .leaflet-tile {
-  filter: brightness(5.00) contrast(3.6) saturate(2.05);
-}
-
-/* Remove aquele “cinza lavado” do fundo */
-#map {
-  background: #000;
-}
-
-/* Deixa a rota ainda mais destacada */
-.leaflet-overlay-pane path {
-  stroke-width: 6 !important;
-  filter: drop-shadow(0 2px 10px rgba(0,0,0,.6));
-}
-/* =========================
-   ETAPA 1 — MAPA NEON
-   ========================= */
-
-/* clareia ruas SEM matar o mapa */
-#map .leaflet-tile{
-  filter: brightness(1.25) contrast(1.35) saturate(1.1);
-}
-
-/* Fundo bem preto pra destacar */
-#map{
-  background:#000;
-}
-
-/* Rota com glow neon (serve pro seu routeLayer) */
-#map .leaflet-overlay-pane path{
-  stroke-width: 6 !important;
-  stroke-linecap: round !important;
-  stroke-linejoin: round !important;
-  filter: drop-shadow(0 0 10px rgba(0,200,255,.85))
-          drop-shadow(0 0 22px rgba(0,200,255,.55));
-}
-
-/* Popups e controles mais “clean” no dark */
-.leaflet-control-zoom a{
-  background: rgba(0,0,0,.55) !important;
-  color: #eaf2ff !important;
-  border: 1px solid rgba(255,255,255,.12) !important;
-}
-.leaflet-control-zoom a:hover{
-  background: rgba(0,0,0,.75) !important;
-}
-.leaflet-popup-content-wrapper,
-.leaflet-popup-tip{
-  background: rgba(10,20,30,.95) !important;
-  color:#eaf2ff !important;
-  border:1px solid rgba(0,200,255,.18) !important;
-}
-/* ===========================
-   MAPA: RUAS MAIS CLARAS (NEON)
-   =========================== */
-
-/* o mapBox vira flex pra fullscreen funcionar direito */
-.mapBox{
-  display:flex;
-  flex-direction:column;
-}
-
-/* mapa cresce automaticamente */
-#map{
-  flex:1;
-  height:auto;
-  width:100%;
-  background:#000; /* evita “preto bugado” enquanto carrega */
-}
-
-/* AQUI é o truque: melhora ruas/pistas no dark */
-#map .leaflet-tile{
-  filter: brightness(1.35) contrast(1.65) saturate(1.20);
-}
-
-/* dá um “glow” leve em linhas/controles */
-#map .leaflet-control-zoom a{
-  background: rgba(0,0,0,.55) !important;
-  color: #fff !important;
-  border: 1px solid rgba(255,255,255,.10) !important;
-}
-
-/* ===========================
-   TELA CHEIA DO MAPA
-   =========================== */
-.mapBox.fullscreen{
-  position: fixed;
-  inset: 12px;
-  z-index: 99999;
-  height: auto;
-  width: auto;
-  border-radius: 18px;
-  box-shadow: 0 30px 120px rgba(0,0,0,.65);
-}
-
-body.lockScroll{
-  overflow: hidden;
-}
-
