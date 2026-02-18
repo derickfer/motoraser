@@ -1,3 +1,8 @@
+function updateRouteIfReady(){ /* noop */ }
+
+// ✅ garante que existe (evita quebrar o app se ainda não carregou a função real)
+function updateRouteIfReady(){ /* noop */ }
+
 // =================== FIREBASE CONFIG ===================
 const firebaseConfig = {
   apiKey: "AIzaSyBI_ZNuKytSxM_XzWv2SE9xGgF_1ea3qgs",
@@ -222,7 +227,8 @@ function setMyLocation(lat, lng){
 
   locStatus.textContent = `Localização: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
 
-  updateRouteIfReady();
+  if (typeof updateRouteIfReady === "function") updateRouteIfReady();
+
   autoArriveCheckAll();
 }
 
@@ -274,7 +280,7 @@ function setDestinationOnMap(dest){
 
   map.setView([dest.lat, dest.lng], 15);
 
-  updateRouteIfReady();
+  if (typeof updateRouteIfReady === "function") updateRouteIfReady();
 
   // ====== DIREÇÃO ======
   if (compassEnabled && Number.isFinite(lastCompassDeg)) {
@@ -292,7 +298,8 @@ function setDestinationOnMap(dest){
   // ✅ (corrigido: não existe lat/lng aqui, então usa dest.*)
   lastPosForBearing = { lat: dest.lat, lng: dest.lng };
 
-  updateRouteIfReady();
+  if (typeof updateRouteIfReady === "function") updateRouteIfReady();
+
   autoArriveCheckAll();
 }
 
@@ -635,7 +642,8 @@ btnPickMap.onclick = () => {
         nameInput2.value = lastDestName;
       }
 
-      updateRouteIfReady();
+      if (typeof updateRouteIfReady === "function") updateRouteIfReady();
+
     }, 120);
   });
 };
@@ -682,7 +690,7 @@ btnPickMap.onclick = () => {
 
         lastDestName = destName;
         setDestinationOnMap({ lat, lng });
-        updateRouteIfReady();
+        if (typeof updateRouteIfReady === "function") updateRouteIfReady();
 
         closeModal();
         openModal("Desafio criado ✅", `<p class="muted">Agora outro piloto pode aceitar.</p>`);
