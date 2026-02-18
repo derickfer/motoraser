@@ -790,8 +790,8 @@ function renderChallenges(docs){
 
     const canStart = (c.status === "accepted" && me && (isMine || isAcceptedByMe));
     const startBtn = canStart
-      ? `<button class="btn primary" data-action="start" data-id="${c.id}">🏁 Iniciar</button>`
-      : "";
+  ? `<button class="btn primary" data-action="start" data-id="${c.id}">🏁 Iniciar</button>`
+  : "";
 
     const creator = escapeHtml(c.createdByName || "—");
     const accepter = escapeHtml(c.acceptedByName || "—");
@@ -818,6 +818,7 @@ function renderChallenges(docs){
         <button class="btn ghost" data-action="route" data-id="${c.id}" data-lat="${dest.lat}" data-lng="${dest.lng}">🧭 Rota</button>
         ${acceptBtn}
         ${startBtn}
+        ${finishBtn}
       </div>
     `;
     challengesEl.appendChild(div);
@@ -851,6 +852,10 @@ function renderChallenges(docs){
   challengesEl.querySelectorAll("button[data-action='accept']").forEach(btn => {
     btn.onclick = async () => await acceptChallenge(btn.getAttribute("data-id"));
   });
+
+  challengesEl.querySelectorAll("button[data-action='finish']").forEach(btn => {
+  btn.onclick = async () => await finishChallenge(btn.getAttribute("data-id"));
+});
 
   challengesEl.querySelectorAll("button[data-action='start']").forEach(btn => {
     btn.onclick = async () => await startRace(btn.getAttribute("data-id"));
@@ -1203,6 +1208,41 @@ async function presenceSetOffline(){
       lastSeen: firebase.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
   }catch(e){}
+}
+async function finishChallenge(id){
+  const u = auth.currentUser;
+  if (!u) return;
+
+  const ref = db.collection("challenges").doc(id);
+
+  try{
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new Error("Desafio não existe.");
+
+      const c = snap.data();
+
+      const isCreator = c.createdByUid === u.uid;
+      const isAccepter = c.acceptedByUid === u.uid;
+
+      if (!isCreator && !isAccepter)
+        throw new Error("Você não participa dessa corrida.");
+
+      tx.update(ref, {
+        status: "finished",
+        finishedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        winnerUid: null,
+        winnerName: "Encerrado manualmente"
+      });
+    });
+
+    openModal("Corrida encerrada", `
+      <p class="muted">A corrida foi finalizada manualmente.</p>
+    `);
+
+  }catch(e){
+    openModal("Erro", `<p class="muted">${e.message}</p>`);
+  }
 }
 
 function presenceStart(){
