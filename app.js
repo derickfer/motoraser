@@ -183,6 +183,36 @@ function initMap(){
 // chama o mapa
 initMap();
 
+// =================== FULLSCREEN MAP ===================
+function setMapFullscreen(isFull){
+  const box = document.getElementById("mapBox");
+  if (!box || !map) return;
+
+  if (isFull){
+    box.classList.add("fullscreen");
+    document.body.classList.add("lockScroll");
+    if (btnMapFull) btnMapFull.textContent = "✖ Fechar";
+  } else {
+    box.classList.remove("fullscreen");
+    document.body.classList.remove("lockScroll");
+    if (btnMapFull) btnMapFull.textContent = "⛶ Tela cheia";
+  }
+
+  // ✅ Leaflet precisa recalcular tamanho
+  setTimeout(() => {
+    try { map.invalidateSize(); } catch(e){}
+  }, 120);
+}
+
+let mapIsFull = false;
+
+if (btnMapFull){
+  btnMapFull.onclick = () => {
+    mapIsFull = !mapIsFull;
+    setMapFullscreen(mapIsFull);
+  };
+}
+
 function setMyLocation(lat, lng){
   lastLocation = { lat, lng };
   if (meMarker) meMarker.setLatLng([lat, lng]);
@@ -1052,3 +1082,4 @@ function presenceListen(){
     });
 
 }
+
