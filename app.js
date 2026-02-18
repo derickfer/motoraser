@@ -408,76 +408,67 @@ btnCloseFullscreenMap.onclick = () => setMapFullscreen(false);
 // REVERSE GEOCODE (Nominatim)
 // ===========================
 async function reverseGeocodeOSM(lat, lng){
-  const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&zoom=18&addressdetails=1`;
-  const resp = await fetch(url, {
-    headers: { "Accept": "application/json", "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.6" }
-  });
-
-  if (!resp.ok) throw new Error("Não foi possível pegar o nome do local (OSM).");
-  const data = await resp.json();
-
-  const addr = data.address || {};
-  const best =
-    data.name ||
-    addr.attraction ||
-    addr.amenity ||
-    addr.shop ||
-    addr.road ||
-    addr.neighbourhood ||
-    addr.suburb ||
-    addr.city ||
-    addr.town ||
-    addr.village ||
-    data.display_name ||
-    "";
-
-  return String(best).trim();
-}
-
-// ===========================
-// ROTAS (OSRM)
-// ===========================
-async function fetchRouteOSRM(from, to){
-  const url = `https://router.project-osrm.org/route/v1/driving/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson&steps=false`;
-  const resp = await fetch(url, { headers: { "Accept": "application/json" } });
-  if (!resp.ok) throw new Error("Falha ao buscar rota (OSRM).");
-  const data = await resp.json();
-
-  const route = data?.routes?.[0];
-  if (!route?.geometry) throw new Error("Rota não encontrada.");
-
-  return { geometry: route.geometry, distance: route.distance || 0, duration: route.duration || 0 };
-}
-
-function clearRoute(){
-  if (routeLayer) {
-    map.removeLayer(routeLayer);
-    routeLayer = null;
-  }
-}
-
-async function updateRouteIfReady(){
-  if (!lastLocation || !lastDest) return;
-
+  // 1) tenta Nominatim (pode falhar por limite/CORS)
   try{
-    mapInfo.textContent = "Calculando rota...";
-    const r = await fetchRouteOSRM(lastLocation, lastDest);
+    const url1 = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&zoom=18&addressdetails=1`;
+    const resp1 = await fetch(url1, { headers: { "Accept": "application/json" } });
+    if (resp1.ok){
+      const data = await resp1.json();
+      const addr = data.address || {};
+      const best =
+        data.name ||
+        addr.road ||
+        addr.neighbourhood ||
+        addr.suburb ||
+        addr.city ||
+        addr.town ||
+        addr.village ||
+        data.display_name ||
+        "";
+      const name = String(best).trim();
+      if (name) return name;
+    }
+  }catch(e){}
 
-    clearRoute();
+  // 2) fallback: Photon (Komoot) (geralmente funciona bem e tem CORS)
+  try{
+    const url2 = `https://photon.komoot.io/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}`;
+    const resp2 = await fetch(url2, { headers: { "Accept": "application/json" } });
+    if (resp2.ok){
+      const data = await resp2.json();
+      const f = data?.features?.[0];
+      const p = f?.properties || {};
+      const best =
+        p.name ||
+        p.street ||
+        p.locality ||
+        p.city ||
+        p.state ||
+        p.country ||
+        "";
+      const name = String(best).trim();
+      if (name) return name;
+    }
+  }catch(e){}
 
-    routeLayer = L.geoJSON(r.geometry, {
-      style: { weight: 5, opacity: 0.95, className: "route-neon" }
-    }).addTo(map);
+  // 3) fallback: BigDataCloud (sem key, CORS ok)
+  try{
+    const url3 = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lng)}&localityLanguage=pt`;
+    const resp3 = await fetch(url3, { headers: { "Accept": "application/json" } });
+    if (resp3.ok){
+      const data = await resp3.json();
+      const best =
+        data.locality ||
+        data.city ||
+        data.principalSubdivision ||
+        data.countryName ||
+        "";
+      const name = String(best).trim();
+      if (name) return name;
+    }
+  }catch(e){}
 
-    const bounds = routeLayer.getBounds();
-    if (bounds && bounds.isValid()) map.fitBounds(bounds.pad(0.2));
-
-    const km = (r.distance / 1000).toFixed(2);
-    const min = Math.max(1, Math.round(r.duration / 60));
-    mapInfo.textContent = `Rota: ${km} km • ~${min} min ✅`;
-  }catch(e){
-    mapInfo.textContent = "Rota indisponível (ok para demo).";
-  }
+  throw new Error("Não foi possível pegar o nome do local (reverse geocode).");
 }
 
 /* ===========================
@@ -626,24 +617,31 @@ btnCreateChallenge.onclick = async () => {
       openModal("Rota", `<p class="muted">Rota removida do mapa.</p>`);
     };
 
-    btnPickMap.onclick = () => {
-      closeModal();
-      startPickOnMap(({ lat, lng, name }) => {
-        btnCreateChallenge.click();
+btnPickMap.onclick = () => {
+  closeModal();
+  startPickOnMap(({ lat, lng, name }) => {
+    btnCreateChallenge.click();
 
-        setTimeout(() => {
-          const latInput = document.getElementById("cLat");
-          const lngInput = document.getElementById("cLng");
-          const nameInput2 = document.getElementById("cDestName");
+    setTimeout(() => {
+      const latInput = document.getElementById("cLat");
+      const lngInput = document.getElementById("cLng");
+      const nameInput2 = document.getElementById("cDestName");
 
-          if (latInput) latInput.value = lat.toFixed(6);
-          if (lngInput) lngInput.value = lng.toFixed(6);
-          if (nameInput2 && name) nameInput2.value = name;
+      if (latInput) latInput.value = lat.toFixed(6);
+      if (lngInput) lngInput.value = lng.toFixed(6);
 
-          updateRouteIfReady();
-        }, 120);
-      });
-    };
+      // ✅ tenta preencher com "name" (quando vier)
+      if (nameInput2 && name) nameInput2.value = name;
+
+      // ✅ fallback: se name veio vazio, tenta usar o lastDestName (se já tiver)
+      if (nameInput2 && (!name || !String(name).trim()) && lastDestName) {
+        nameInput2.value = lastDestName;
+      }
+
+      updateRouteIfReady();
+    }, 120);
+  });
+};
 
     btnC.onclick = async () => {
       const destName = (document.getElementById("cDestName").value || "").trim();
