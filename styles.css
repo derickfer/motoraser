@@ -208,3 +208,30 @@ input{
 .modalTitle{font-weight:900}
 .modalBody{padding:12px;color:var(--text)}
 .modalActions{padding:12px;border-top:1px solid var(--stroke);display:flex;justify-content:flex-end;gap:10px}
+/* =========================
+   SETA DO MOTORISTA (NEON)
+   ========================= */
+.driverArrow{
+  width: 22px;
+  height: 22px;
+  transform-origin: 50% 50%;
+  filter:
+    drop-shadow(0 0 8px rgba(0,200,255,.65))
+    drop-shadow(0 0 16px rgba(0,200,255,.25));
+}
+
+.driverArrow svg{
+  width:100%;
+  height:100%;
+  display:block;
+}
+
+/* opcional: deixa o “ponto” central mais bonito */
+.driverDot{
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(0,200,255,.95);
+  border: 2px solid rgba(255,255,255,.9);
+  box-shadow: 0 0 12px rgba(0,200,255,.55);
+}

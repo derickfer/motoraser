@@ -100,9 +100,12 @@ async function loadUserDoc(uid){
 // =================== MAP (Leaflet) ===================
 let map, meMarker, destMarker;
 let lastLocation = null;
-let lastDest = null;
-let lastDestName = "";
-let routeLayer = null;
+
+// ====== SETA / DIREÇÃO ======
+let meHeadingDeg = 0;             // ângulo atual (graus)
+let lastPosForBearing = null;     // última posição pra calcular direção
+let compassEnabled = false;       // se bússola do aparelho foi ativada
+let lastCompassDeg = null;        // leitura da bússola (quando existir)
 
 // ✅ GPS watch
 let gpsWatchId = null;
@@ -123,7 +126,11 @@ function initMap(){
     attribution: '&copy; OpenStreetMap &copy; CARTO'
   }).addTo(map);
 
-  meMarker = L.marker([fallback.lat, fallback.lng]).addTo(map).bindPopup("Você");
+  meMarker = L.marker([fallback.lat, fallback.lng], { icon: driverArrowIcon() })
+  .addTo(map)
+  .bindPopup("Você");
+setMarkerRotation(meMarker, meHeadingDeg);
+
   destMarker = null;
 
   mapInfo.textContent = "Toque em “Minha localização”.";
