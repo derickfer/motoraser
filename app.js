@@ -1,11 +1,12 @@
-/* ============================================================================
-   MOTORESER - app.js COMPLETO (LIMPO)
-   - 1x updateRouteIfReady
-   - 1x lastLocation
-   - Clique no mapa seleciona destino + pega nome (reverse geocode)
-   - GPS + bússola + rota OSRM
-   - Firebase auth + desafios + presença online
-============================================================================ */
+/* =================================================================================
+  MOTORASER - app.js (COMPLETO / ATUALIZADO)
+  - Leaflet + OSRM rota
+  - Firebase Auth + Firestore
+  - Desafios 1x1
+  - Chegada automática (100m)
+  - Presença online + mapa
+  - Encerrar corrida (finalizar corridas antigas/incompletas) ✅
+================================================================================= */
 
 // =================== FIREBASE CONFIG ===================
 const firebaseConfig = {
@@ -22,10 +23,8 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
-// =================== DOM HELPERS ===================
 const $ = (id) => document.getElementById(id);
-const safeText = (el, txt) => { if (el) el.textContent = txt; };
-const safeHtml = (el, html) => { if (el) el.innerHTML = html; };
+const on = (el, evt, fn) => { if (el) el.addEventListener(evt, fn); };
 
 const yearEl = $("year");
 if (yearEl) yearEl.textContent = new Date().getFullYear();
@@ -41,6 +40,9 @@ const btnFullscreenMap = $("btnFullscreenMap");
 const btnCloseFullscreenMap = $("btnCloseFullscreenMap");
 const mapBox = $("mapBox");
 
+const btnClearRoute = $("btnClearRoute");
+const btnPickMap = $("btnPickMap");
+
 const userStatus = $("userStatus");
 const locStatus = $("locStatus");
 const mapInfo = $("mapInfo");
@@ -52,6 +54,7 @@ const nameInput = $("name");
 const phoneInput = $("phone");
 const btnClear = $("btnClear");
 
+// Modal
 const modal = $("modal");
 const modalTitle = $("modalTitle");
 const modalBody = $("modalBody");
@@ -60,13 +63,15 @@ const modalOk = $("modalOk");
 
 // =================== MODAL ===================
 function openModal(title, html) {
-  if (!modal) return alert(title);
-  if (modalTitle) modalTitle.textContent = title;
-  if (modalBody) modalBody.innerHTML = html;
+  if (!modal) return;
+  if (modalTitle) modalTitle.textContent = title || "";
+  if (modalBody) modalBody.innerHTML = html || "";
   modal.classList.remove("hidden");
 }
-function closeModal(){ if (modal) modal.classList.add("hidden"); }
-
+function closeModal(){
+  if (!modal) return;
+  modal.classList.add("hidden");
+}
 if (modalClose) modalClose.onclick = closeModal;
 if (modalOk) modalOk.onclick = closeModal;
 if (modal) modal.onclick = (e) => { if (e.target === modal) closeModal(); };
@@ -116,7 +121,7 @@ async function loadUserDoc(uid){
   return snap.exists ? (snap.data() || {}) : null;
 }
 
-// =================== ESTADO GLOBAL (1x SÓ) ===================
+// =================== ESTADO GLOBAL ===================
 let map = null;
 let meMarker = null;
 let destMarker = null;
@@ -124,13 +129,11 @@ let destMarker = null;
 let lastLocation = null;    // {lat,lng}
 let lastDest = null;        // {lat,lng}
 let lastDestName = "";      // string
-
-let routeLayer = null;
+let routeLayer = null;      // L.geoJSON layer
 let tileLayer = null;
 
 let gpsWatchId = null;
 
-// picking mode
 let pickingMode = false;
 let pickingMarker = null;
 let pickingCallback = null;
@@ -141,10 +144,6 @@ let lastPosForBearing = null;
 let compassEnabled = false;
 let lastCompassDeg = null;
 
-// ✅ evita spammar chegada
-const arrivingNow = new Set();
-
-// =================== ROTATION / BEARING ===================
 function normDeg(d){
   let x = Number(d);
   if (!Number.isFinite(x)) return 0;
@@ -152,7 +151,6 @@ function normDeg(d){
   if (x < 0) x += 360;
   return x;
 }
-
 function bearingDeg(a, b){
   const toRad = (x) => x * Math.PI / 180;
   const toDeg = (x) => x * 180 / Math.PI;
@@ -166,7 +164,6 @@ function bearingDeg(a, b){
 
   return normDeg(toDeg(Math.atan2(y, x)));
 }
-
 function driverArrowIcon(){
   return L.divIcon({
     className: "driverWrap",
@@ -193,7 +190,6 @@ function driverArrowIcon(){
     iconAnchor: [14, 14],
   });
 }
-
 function setMarkerRotation(marker, deg){
   if (!marker) return;
   const el = marker.getElement?.();
@@ -206,14 +202,8 @@ function setMarkerRotation(marker, deg){
 // =================== MAP INIT ===================
 function initMap(){
   const fallback = { lat: -3.2041, lng: -52.2111 }; // Altamira
-
-  const mapEl = $("map");
-  if (!mapEl) {
-    console.error("Elemento #map não existe no HTML.");
-    return;
-  }
-
-  map = L.map("map", { zoomControl: true }).setView([fallback.lat, fallback.lng], 13);
+  map = L.map("map", { zoomControl: true })
+    .setView([fallback.lat, fallback.lng], 13);
 
   tileLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
     maxZoom: 20,
@@ -226,62 +216,18 @@ function initMap(){
 
   setMarkerRotation(meMarker, meHeadingDeg);
 
-  safeText(mapInfo, "Toque em “Minha localização”.");
-
-  // ✅ CLICK DO MAPA: seleciona destino quando pickingMode estiver ligado
-  map.on("click", async (e) => {
-    if (!pickingMode) return;
-
-    const lat = e.latlng.lat;
-    const lng = e.latlng.lng;
-
-    // marcador temporário (picking)
-    if (pickingMarker){
-      try { map.removeLayer(pickingMarker); } catch(err){}
-    }
-    pickingMarker = L.marker([lat, lng]).addTo(map).bindPopup("Destino selecionado ✅").openPopup();
-
-    // seta destino e tenta rota
-    setDestinationOnMap({ lat, lng });
-
-    // reverse geocode
-    lastDestName = "";
-    safeText(mapInfo, "Buscando nome do local...");
-    try{
-      const place = await reverseGeocodeOSM(lat, lng);
-      lastDestName = place || "";
-    }catch(err){
-      lastDestName = "";
-    }
-
-    // callback
-    if (typeof pickingCallback === "function") {
-      pickingCallback({ lat, lng, name: lastDestName });
-    }
-
-    stopPickOnMap();
-  });
+  if (mapInfo) mapInfo.textContent = "Toque em “Minha localização”.";
 }
 initMap();
 
-// =================== FULLSCREEN MAP ===================
-function setMapFullscreen(on){
+function setMapFullscreen(onFull){
   if (!mapBox) return;
-  if (on){
-    mapBox.classList.add("fullscreen");
-    if (btnFullscreenMap) btnFullscreenMap.classList.add("hidden");
-    if (btnCloseFullscreenMap) btnCloseFullscreenMap.classList.remove("hidden");
-  } else {
-    mapBox.classList.remove("fullscreen");
-    if (btnFullscreenMap) btnFullscreenMap.classList.remove("hidden");
-    if (btnCloseFullscreenMap) btnCloseFullscreenMap.classList.add("hidden");
-  }
-
-  setTimeout(() => { try { map?.invalidateSize(true); } catch(e){} }, 120);
+  if (onFull) mapBox.classList.add("fullscreen");
+  else mapBox.classList.remove("fullscreen");
+  setTimeout(() => { try { map?.invalidateSize(); } catch(e){} }, 120);
 }
-
-if (btnFullscreenMap) btnFullscreenMap.onclick = () => setMapFullscreen(true);
-if (btnCloseFullscreenMap) btnCloseFullscreenMap.onclick = () => setMapFullscreen(false);
+on(btnFullscreenMap, "click", () => setMapFullscreen(true));
+on(btnCloseFullscreenMap, "click", () => setMapFullscreen(false));
 
 // =================== ROTA (OSRM) ===================
 function clearRoute(){
@@ -311,7 +257,7 @@ async function updateRouteIfReady(){
     clearRoute();
 
     routeLayer = L.geoJSON(geom, {
-      style: { weight: 5, opacity: 0.95 }
+      style: { weight: 5, opacity: 0.95, className: "route-neon" }
     }).addTo(map);
 
     const bounds = routeLayer.getBounds();
@@ -319,24 +265,49 @@ async function updateRouteIfReady(){
 
     const km = (Number(route.distance || 0) / 1000).toFixed(2);
     const min = Math.max(1, Math.round(Number(route.duration || 0) / 60));
-    safeText(mapInfo, `Rota: ${km} km • ~${min} min ✅`);
+    if (mapInfo) mapInfo.textContent = `Rota: ${km} km • ~${min} min ✅`;
   }catch(e){
-    safeText(mapInfo, "Rota indisponível (ok para demo).");
+    if (mapInfo) mapInfo.textContent = "Rota indisponível (ok para demo).";
   }
 }
 
-// =================== DESTINO NO MAPA ===================
-function setDestinationOnMap(dest){
-  if (!map) return;
+if (btnClearRoute){
+  btnClearRoute.onclick = () => {
+    clearRoute();
+    openModal("Rota", `<p class="muted">Rota removida do mapa.</p>`);
+  };
+}
 
+// =================== LOCALIZAÇÃO ===================
+function setMyLocation(lat, lng){
+  lastLocation = { lat, lng };
+
+  // direção pelo movimento
+  if (lastPosForBearing){
+    meHeadingDeg = bearingDeg(lastPosForBearing, { lat, lng });
+  }
+  lastPosForBearing = { lat, lng };
+
+  setMarkerRotation(meMarker, meHeadingDeg);
+  if (meMarker) meMarker.setLatLng([lat, lng]);
+  if (map) map.setView([lat, lng], 15);
+
+  if (locStatus) locStatus.textContent = `Localização: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+
+  updateRouteIfReady();
+  if (typeof autoArriveCheckAll === "function") autoArriveCheckAll();
+}
+
+function setDestinationOnMap(dest){
   lastDest = dest;
 
-  if (destMarker){
+  if (destMarker && map) {
     try { map.removeLayer(destMarker); } catch(e){}
   }
+
   destMarker = L.marker([dest.lat, dest.lng]).addTo(map).bindPopup("Destino");
 
-  // gira seta
+  // gira seta: bússola > movimento
   if (compassEnabled && Number.isFinite(lastCompassDeg)) {
     meHeadingDeg = normDeg(lastCompassDeg);
   } else if (lastLocation) {
@@ -345,139 +316,94 @@ function setDestinationOnMap(dest){
   setMarkerRotation(meMarker, meHeadingDeg);
 
   map.setView([dest.lat, dest.lng], 15);
-
   updateRouteIfReady();
-  autoArriveCheckAll();
+  if (typeof autoArriveCheckAll === "function") autoArriveCheckAll();
 }
 
-// =================== LOCALIZAÇÃO ===================
-function setMyLocation(lat, lng){
-  if (!map) return;
-
-  lastLocation = { lat, lng };
-
-  if (lastPosForBearing){
-    meHeadingDeg = bearingDeg(lastPosForBearing, { lat, lng });
-  }
-  lastPosForBearing = { lat, lng };
-
-  setMarkerRotation(meMarker, meHeadingDeg);
-  try { meMarker?.setLatLng([lat, lng]); } catch(e){}
-  try { map.setView([lat, lng], 15); } catch(e){}
-
-  safeText(locStatus, `Localização: ${lat.toFixed(5)}, ${lng.toFixed(5)}`);
-
-  updateRouteIfReady();
-  autoArriveCheckAll();
-}
-
-// =================== GEOLOCATION ===================
 async function getLocationOnce(){
   return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) return reject(new Error("Sem geolocalização no navegador."));
+    if (!navigator.geolocation) return reject(new Error("Geolocalização não suportada."));
     navigator.geolocation.getCurrentPosition(
-      (pos) => resolve({
-        lat: pos.coords.latitude,
-        lng: pos.coords.longitude,
-        acc: pos.coords.accuracy || null
-      }),
+      (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
       (err) => reject(err),
-      { enableHighAccuracy:true, timeout:12000, maximumAge:0 }
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 8000 }
     );
   });
 }
 
 async function getLocationOrAsk(){
   if (lastLocation) return lastLocation;
-  const p = await getLocationOnce();
-  setMyLocation(p.lat, p.lng);
-  return lastLocation;
+  const loc = await getLocationOnce();
+  setMyLocation(loc.lat, loc.lng);
+  return loc;
 }
 
 function startGpsWatch(){
-  if (gpsWatchId != null) return;
   if (!navigator.geolocation) return;
+  if (gpsWatchId != null) return;
 
   gpsWatchId = navigator.geolocation.watchPosition(
     (pos) => {
       const lat = pos.coords.latitude;
       const lng = pos.coords.longitude;
-
-      const heading = pos.coords.heading;
-      if (!compassEnabled && Number.isFinite(heading)) {
-        meHeadingDeg = normDeg(heading);
-      }
-
       setMyLocation(lat, lng);
     },
-    (err) => {
-      console.log("GPS watch error:", err);
-      safeText(mapInfo, "Erro no GPS (permita localização).");
-    },
-    { enableHighAccuracy:true, maximumAge:5000, timeout:20000 }
+    () => {},
+    { enableHighAccuracy: true, timeout: 12000, maximumAge: 3000 }
   );
 }
-
 function stopGpsWatch(){
-  if (gpsWatchId == null) return;
-  try { navigator.geolocation.clearWatch(gpsWatchId); } catch(e){}
+  if (gpsWatchId != null){
+    try { navigator.geolocation.clearWatch(gpsWatchId); } catch(e){}
+  }
   gpsWatchId = null;
 }
 
-// =================== COMPASS ===================
+// =================== BÚSSOLA ===================
 async function enableCompassIfPossible(){
   try{
-    if (!("DeviceOrientationEvent" in window)) return;
-
+    if (typeof DeviceOrientationEvent === "undefined") return;
     if (typeof DeviceOrientationEvent.requestPermission === "function") {
-      const res = await DeviceOrientationEvent.requestPermission();
-      if (res !== "granted") return;
+      const p = await DeviceOrientationEvent.requestPermission();
+      if (p !== "granted") return;
     }
-
     window.addEventListener("deviceorientation", (e) => {
-      if (e && Number.isFinite(e.alpha)) {
-        lastCompassDeg = normDeg(e.alpha);
+      const a = e.alpha;
+      if (!Number.isFinite(a)) return;
+      compassEnabled = true;
+      lastCompassDeg = normDeg(a);
+      // se tiver destino, aponta pra ele
+      if (lastDest && lastLocation){
+        meHeadingDeg = lastCompassDeg;
+        setMarkerRotation(meMarker, meHeadingDeg);
       }
-    }, true);
-
-    compassEnabled = true;
-  }catch(e){
-    compassEnabled = false;
-  }
+    }, { passive: true });
+  }catch(e){}
 }
 
-// =================== AUTO START ===================
-let autoStarted = false;
+// tenta ligar no mobile
+enableCompassIfPossible();
 
+// =================== AUTO START LOCATION ===================
+let autoStarted = false;
 async function autoStartLocation(){
   if (autoStarted) return;
   autoStarted = true;
-
   try{
-    await enableCompassIfPossible();
     await getLocationOrAsk();
     startGpsWatch();
     await updateRouteIfReady();
-  }catch(e){
-    console.log("autoStartLocation:", e?.message || e);
-    safeText(mapInfo, "Permita a localização para iniciar automaticamente.");
-  }
+  }catch(e){}
 }
 
-window.addEventListener("load", () => {
-  autoStartLocation();
-});
-
-// Botão "Minha localização"
-if (btnLocate) {
+if (btnLocate){
   btnLocate.onclick = async () => {
     try{
-      await enableCompassIfPossible();
-      await getLocationOrAsk();
+      const loc = await getLocationOrAsk();
       startGpsWatch();
-      openModal("Localização ✅", `<p class="muted">GPS ligado e atualizando no mapa.</p>`);
+      openModal("Localização ✅", `<p class="muted">${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}</p>`);
     }catch(e){
-      openModal("Localização", `<p class="muted">${escapeHtml(e?.message || String(e))}</p>`);
+      openModal("Localização", `<p class="muted">Permita a localização no navegador.</p>`);
     }
   };
 }
@@ -486,7 +412,6 @@ if (btnLocate) {
 // REVERSE GEOCODE (nome do local)
 // ===========================
 async function reverseGeocodeOSM(lat, lng){
-  // Nominatim
   try{
     const url1 = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&zoom=18&addressdetails=1`;
     const r1 = await fetch(url1, { headers: { "Accept":"application/json" } });
@@ -508,7 +433,6 @@ async function reverseGeocodeOSM(lat, lng){
     }
   }catch(e){}
 
-  // Photon (fallback)
   try{
     const url2 = `https://photon.komoot.io/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}`;
     const r2 = await fetch(url2, { headers: { "Accept":"application/json" } });
@@ -521,29 +445,17 @@ async function reverseGeocodeOSM(lat, lng){
     }
   }catch(e){}
 
-  // BigDataCloud (fallback)
-  try{
-    const url3 = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lng)}&localityLanguage=pt`;
-    const r3 = await fetch(url3, { headers: { "Accept":"application/json" } });
-    if (r3.ok){
-      const data = await r3.json();
-      const best = data.locality || data.city || data.principalSubdivision || data.countryName || "";
-      const name = String(best).trim();
-      if (name) return name;
-    }
-  }catch(e){}
-
   return "";
 }
 
 // ===========================
-// PICK DESTINO NO MAPA
+// SELECIONAR DESTINO NO MAPA
 // ===========================
 function startPickOnMap(callback){
   pickingMode = true;
   pickingCallback = callback;
 
-  safeText(mapInfo, "🎯 Clique no mapa para selecionar o DESTINO.");
+  if (mapInfo) mapInfo.textContent = "🎯 Clique no mapa para selecionar o DESTINO.";
   const mapEl = $("map");
   if (mapEl) mapEl.style.cursor = "crosshair";
 
@@ -557,27 +469,88 @@ function stopPickOnMap(){
   pickingMode = false;
   pickingCallback = null;
 
-  safeText(mapInfo, "Seleção encerrada.");
+  if (mapInfo) mapInfo.textContent = "Seleção encerrada.";
   const mapEl = $("map");
   if (mapEl) mapEl.style.cursor = "";
 }
 
+// click do mapa
+if (map){
+  map.on("click", async (e) => {
+    if (!pickingMode) return;
+
+    const lat = e.latlng.lat;
+    const lng = e.latlng.lng;
+
+    if (pickingMarker){
+      try { map.removeLayer(pickingMarker); } catch(e){}
+    }
+    pickingMarker = L.marker([lat, lng]).addTo(map).bindPopup("Destino selecionado ✅").openPopup();
+
+    setDestinationOnMap({ lat, lng });
+
+    lastDestName = "";
+    try{
+      if (mapInfo) mapInfo.textContent = "Buscando nome do local...";
+      const place = await reverseGeocodeOSM(lat, lng);
+      lastDestName = place || "";
+    }catch(e){
+      lastDestName = "";
+    }
+
+    if (typeof pickingCallback === "function"){
+      pickingCallback({ lat, lng, name: lastDestName });
+    }
+
+    stopPickOnMap();
+  });
+}
+
+if (btnPickMap){
+  btnPickMap.onclick = () => {
+    closeModal();
+    startPickOnMap(({ lat, lng, name }) => {
+      // abre modal de criação se existir
+      if (btnCreateChallenge) btnCreateChallenge.click();
+
+      setTimeout(() => {
+        const latInput = $("cLat");
+        const lngInput = $("cLng");
+        const nameInput2 = $("cDestName");
+
+        if (latInput) latInput.value = lat.toFixed(6);
+        if (lngInput) lngInput.value = lng.toFixed(6);
+
+        if (nameInput2 && name) nameInput2.value = name;
+        if (nameInput2 && (!name || !String(name).trim()) && lastDestName) {
+          nameInput2.value = lastDestName;
+        }
+
+        updateRouteIfReady();
+      }, 120);
+    });
+  };
+}
+
 // =================== AUTH ===================
-if (btnLogin) {
+if (btnLogin){
   btnLogin.onclick = async () => {
-    try {
+    try{
       const provider = new firebase.auth.GoogleAuthProvider();
       await auth.signInWithPopup(provider);
-    } catch (e) {
-      openModal("Erro no login", `<p class="muted">${escapeHtml(e?.message || String(e))}</p>`);
+    }catch(e){
+      openModal("Login", `<p class="muted">${escapeHtml(e?.message || String(e))}</p>`);
     }
   };
 }
-if (btnLogout) {
-  btnLogout.onclick = async () => { try { await auth.signOut(); } catch(e){} };
+
+if (btnLogout){
+  btnLogout.onclick = async () => {
+    try { await auth.signOut(); } catch(e){}
+  };
 }
 
-// =================== CHALLENGES (Firestore) ===================
+// =================== CHALLENGES LISTENER ===================
 let unsubChallenges = null;
 
 function stopChallengesListener(){
@@ -587,168 +560,85 @@ function stopChallengesListener(){
 
 function startChallengesListener(){
   stopChallengesListener();
+
+  // ✅ mais simples e confiável
   unsubChallenges = db.collection("challenges")
     .orderBy("createdAt", "desc")
-    .limit(50)
-    .onSnapshot(
-      (snap) => renderChallenges(snap.docs),
-      (err) => openModal("Erro", `<p class="muted">${escapeHtml(err?.message || String(err))}</p>`)
-    );
+    .limit(60)
+    .onSnapshot((snap) => {
+      renderChallenges(snap.docs);
+    }, () => {
+      if (challengesEl) challengesEl.innerHTML = `<div class="muted">Erro ao carregar desafios.</div>`;
+    });
 }
 
-if (btnRefresh) btnRefresh.onclick = () => startChallengesListener();
+if (btnRefresh){
+  btnRefresh.onclick = () => {
+    startChallengesListener();
+    openModal("Atualizar", `<p class="muted">Atualizado ✅</p>`);
+  };
+}
 
-// =================== CREATE CHALLENGE ===================
-if (btnCreateChallenge) {
-  btnCreateChallenge.onclick = async () => {
+// =================== CRIAR DESAFIO (modal) ===================
+// Se teu HTML tiver botão "btnC" (confirmar criação), isso aqui funciona.
+const btnC = $("btnC");
+if (btnC){
+  btnC.onclick = async () => {
     const u = auth.currentUser;
-    if (!u) return openModal("Login", `<p class="muted">Entre com Google para criar desafio.</p>`);
+    if (!u) return openModal("Login", `<p class="muted">Entre com Google para criar.</p>`);
 
     let myLoc;
-    try {
-      myLoc = await getLocationOrAsk();
-      startGpsWatch();
-    } catch(e) {
-      return openModal("Localização", `<p class="muted">Permita a localização primeiro.</p>`);
+    try { myLoc = await getLocationOrAsk(); startGpsWatch(); }
+    catch(e){ return openModal("Localização", `<p class="muted">Permita a localização.</p>`); }
+
+    const destName = ($("cDestName")?.value || "").trim();
+    const lat = Number($("cLat")?.value);
+    const lng = Number($("cLng")?.value);
+    const stake = Number($("cStake")?.value || 0);
+
+    if (!destName) return openModal("Erro", `<p class="muted">Digite o nome do destino.</p>`);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return openModal("Erro", `<p class="muted">LAT/LNG inválidos.</p>`);
+
+    try{
+      await db.collection("challenges").add({
+        status: "open",
+        stakePoints: stake,
+
+        createdByUid: u.uid,
+        createdByName: u.displayName || "Sem nome",
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+
+        acceptedByUid: null,
+        acceptedByName: null,
+        acceptedAt: null,
+
+        destinationName: destName,
+        destinationLat: lat,
+        destinationLng: lng,
+
+        startedAt: null,
+
+        arrivedCreatorAt: null,
+        arrivedAccepterAt: null,
+        winnerUid: null,
+        winnerName: null,
+        finishedAt: null,
+
+        originCreatorLat: myLoc.lat,
+        originCreatorLng: myLoc.lng,
+        originAccepterLat: null,
+        originAccepterLng: null
+      });
+
+      lastDestName = destName;
+      setDestinationOnMap({ lat, lng });
+      updateRouteIfReady();
+
+      closeModal();
+      openModal("Desafio criado ✅", `<p class="muted">Agora outro piloto pode aceitar.</p>`);
+    }catch(e){
+      openModal("Erro", `<p class="muted">${escapeHtml(e?.message || String(e))}</p>`);
     }
-
-    openModal("Criar desafio 🏁", `
-      <div class="muted" style="margin-bottom:10px">
-        Digite o destino e a “aposta” em pontos (simulador).
-      </div>
-
-      <label style="display:flex;flex-direction:column;gap:6px;margin:10px 0">
-        <span class="muted">Destino (nome)</span>
-        <input id="cDestName" placeholder="Ex: Orla do Xingu"
-          value="${escapeHtml(lastDestName || "")}" />
-      </label>
-
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin:10px 0">
-        <button id="btnPickMap" class="btn ghost" type="button">🗺️ Selecionar no mapa</button>
-        <button id="btnPickStop" class="btn ghost" type="button">❌ Sair da seleção</button>
-        <button id="btnClearRoute" class="btn ghost" type="button">🧹 Limpar rota</button>
-      </div>
-
-      <label style="display:flex;flex-direction:column;gap:6px;margin:10px 0">
-        <span class="muted">Destino (LAT)</span>
-        <input id="cLat" placeholder="-3.20410" value="${lastDest?.lat ? Number(lastDest.lat).toFixed(6) : ""}" />
-      </label>
-
-      <label style="display:flex;flex-direction:column;gap:6px;margin:10px 0">
-        <span class="muted">Destino (LNG)</span>
-        <input id="cLng" placeholder="-52.21110" value="${lastDest?.lng ? Number(lastDest.lng).toFixed(6) : ""}" />
-      </label>
-
-      <label style="display:flex;flex-direction:column;gap:6px;margin:10px 0">
-        <span class="muted">Aposta (pontos)</span>
-        <input id="cStake" type="number" value="10" min="0" />
-      </label>
-
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">
-        <button id="cCreate" class="btn primary" type="button">Criar</button>
-        <button id="cCancel" class="btn ghost" type="button">Cancelar</button>
-      </div>
-
-      <div class="tiny muted" style="margin-top:10px">
-        Dica: clique em “Selecionar no mapa” e toque no destino. O nome e a rota vão aparecer.
-      </div>
-    `);
-
-    setTimeout(() => {
-      const btnC = $("cCreate");
-      const btnX = $("cCancel");
-      const btnPickMap = $("btnPickMap");
-      const btnPickStop = $("btnPickStop");
-      const btnClearRoute = $("btnClearRoute");
-
-      if (btnX) btnX.onclick = closeModal;
-
-      if (btnPickStop) btnPickStop.onclick = () => {
-        stopPickOnMap();
-        openModal("Seleção", `<p class="muted">Seleção encerrada.</p>`);
-      };
-
-      if (btnClearRoute) btnClearRoute.onclick = () => {
-        clearRoute();
-        openModal("Rota", `<p class="muted">Rota removida do mapa.</p>`);
-      };
-
-      if (btnPickMap) {
-        btnPickMap.onclick = () => {
-          closeModal();
-          startPickOnMap(({ lat, lng, name }) => {
-            // reabre modal
-            btnCreateChallenge.click();
-
-            setTimeout(() => {
-              const latInput = $("cLat");
-              const lngInput = $("cLng");
-              const nameInput2 = $("cDestName");
-
-              if (latInput) latInput.value = Number(lat).toFixed(6);
-              if (lngInput) lngInput.value = Number(lng).toFixed(6);
-
-              if (nameInput2) {
-                const nm = (name && String(name).trim()) ? name : (lastDestName || "");
-                nameInput2.value = nm;
-              }
-
-              updateRouteIfReady();
-            }, 150);
-          });
-        };
-      }
-
-      if (btnC) btnC.onclick = async () => {
-        const destName = ( $("cDestName")?.value || "" ).trim();
-        const lat = Number($("cLat")?.value);
-        const lng = Number($("cLng")?.value);
-        const stake = Number($("cStake")?.value || 0);
-
-        if (!destName) return openModal("Erro", `<p class="muted">Digite o nome do destino.</p>`);
-        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return openModal("Erro", `<p class="muted">LAT/LNG inválidos.</p>`);
-
-        try{
-          await db.collection("challenges").add({
-            status: "open",
-            stakePoints: stake,
-
-            createdByUid: u.uid,
-            createdByName: u.displayName || "Sem nome",
-            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-
-            acceptedByUid: null,
-            acceptedByName: null,
-            acceptedAt: null,
-
-            destinationName: destName,
-            destinationLat: lat,
-            destinationLng: lng,
-
-            startedAt: null,
-
-            arrivedCreatorAt: null,
-            arrivedAccepterAt: null,
-            winnerUid: null,
-            winnerName: null,
-            finishedAt: null,
-
-            originCreatorLat: myLoc.lat,
-            originCreatorLng: myLoc.lng,
-            originAccepterLat: null,
-            originAccepterLng: null
-          });
-
-          lastDestName = destName;
-          setDestinationOnMap({ lat, lng });
-
-          closeModal();
-          openModal("Desafio criado ✅", `<p class="muted">Agora outro piloto pode aceitar.</p>`);
-        }catch(e){
-          openModal("Erro", `<p class="muted">${escapeHtml(e?.message || String(e))}</p>`);
-        }
-      };
-    }, 0);
   };
 }
 
@@ -758,9 +648,9 @@ function renderChallenges(docs){
   const me = u ? u.uid : null;
 
   const list = docs.map(d => ({ id:d.id, ...d.data() }))
-    .filter(x => x.status !== "finished" && x.status !== "canceled");
+    .filter(x => x.status !== "canceled"); // deixa finished opcional (se quiser esconder, filtra aqui)
 
-  safeText(liveCount, `${list.length} online`);
+  if (liveCount) liveCount.textContent = `${list.length} online`;
   if (!challengesEl) return;
 
   challengesEl.innerHTML = "";
@@ -777,7 +667,9 @@ function renderChallenges(docs){
     const statusTag =
       c.status === "open" ? `<span class="tag open">Aberto</span>` :
       c.status === "accepted" ? `<span class="tag accepted">Aceito</span>` :
-      `<span class="tag racing">Correndo</span>`;
+      c.status === "racing" ? `<span class="tag racing">Correndo</span>` :
+      c.status === "finished" ? `<span class="tag done">Finalizado</span>` :
+      `<span class="tag done">${escapeHtml(c.status || "—")}</span>`;
 
     const mineTag = isMine ? `<span class="tag mine">Meu desafio</span>` : "";
     const stakeTag = `<span class="tag done">Aposta: ${Number(c.stakePoints||0)} pts</span>`;
@@ -790,8 +682,14 @@ function renderChallenges(docs){
 
     const canStart = (c.status === "accepted" && me && (isMine || isAcceptedByMe));
     const startBtn = canStart
-  ? `<button class="btn primary" data-action="start" data-id="${c.id}">🏁 Iniciar</button>`
-  : "";
+      ? `<button class="btn primary" data-action="start" data-id="${c.id}">🏁 Iniciar</button>`
+      : "";
+
+    // ✅ BOTÃO ENCERRAR (corridas antigas/incompletas)
+    const canFinish = me && (isMine || isAcceptedByMe) && (c.status !== "canceled" && c.status !== "finished");
+    const finishBtn = canFinish
+      ? `<button class="btn danger" data-action="finish" data-id="${c.id}">🛑 Encerrar</button>`
+      : "";
 
     const creator = escapeHtml(c.createdByName || "—");
     const accepter = escapeHtml(c.acceptedByName || "—");
@@ -804,7 +702,7 @@ function renderChallenges(docs){
         <div class="rideMeta">Criador: <b>${creator}</b></div>
         <div class="rideMeta">Adversário: <b>${accepter || "—"}</b></div>
         <div class="rideMeta">Destino: <b>${escapeHtml(c.destinationName || "—")}</b></div>
-        <div class="rideMeta">Coord: <b>${dest.lat.toFixed(5)}, ${dest.lng.toFixed(5)}</b></div>
+        <div class="rideMeta">Coord: <b>${Number.isFinite(dest.lat) ? dest.lat.toFixed(5) : "—"}, ${Number.isFinite(dest.lng) ? dest.lng.toFixed(5) : "—"}</b></div>
         <div class="rideMeta">${escapeHtml(fmtTime(c.createdAt))}</div>
       </div>
 
@@ -814,8 +712,10 @@ function renderChallenges(docs){
           ${mineTag}
           ${stakeTag}
         </div>
+
         <button class="btn ghost" data-action="zoom" data-id="${c.id}" data-lat="${dest.lat}" data-lng="${dest.lng}">🎯 Ver destino</button>
         <button class="btn ghost" data-action="route" data-id="${c.id}" data-lat="${dest.lat}" data-lng="${dest.lng}">🧭 Rota</button>
+
         ${acceptBtn}
         ${startBtn}
         ${finishBtn}
@@ -828,7 +728,9 @@ function renderChallenges(docs){
     btn.onclick = () => {
       const lat = Number(btn.getAttribute("data-lat"));
       const lng = Number(btn.getAttribute("data-lng"));
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
       setDestinationOnMap({ lat, lng });
+      map?.setView([lat, lng], 15);
       openModal("Destino", `<p class="muted">Destino marcado no mapa 🎯</p>`);
     };
   });
@@ -840,6 +742,7 @@ function renderChallenges(docs){
         startGpsWatch();
         const lat = Number(btn.getAttribute("data-lat"));
         const lng = Number(btn.getAttribute("data-lng"));
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
         setDestinationOnMap({ lat, lng });
         await updateRouteIfReady();
         openModal("Rota ✅", `<p class="muted">Rota desenhada no mapa.</p>`);
@@ -853,12 +756,12 @@ function renderChallenges(docs){
     btn.onclick = async () => await acceptChallenge(btn.getAttribute("data-id"));
   });
 
-  challengesEl.querySelectorAll("button[data-action='finish']").forEach(btn => {
-  btn.onclick = async () => await finishChallenge(btn.getAttribute("data-id"));
-});
-
   challengesEl.querySelectorAll("button[data-action='start']").forEach(btn => {
     btn.onclick = async () => await startRace(btn.getAttribute("data-id"));
+  });
+
+  challengesEl.querySelectorAll("button[data-action='finish']").forEach(btn => {
+    btn.onclick = async () => await finishChallenge(btn.getAttribute("data-id"));
   });
 }
 
@@ -928,7 +831,42 @@ async function startRace(id){
   }
 }
 
+// ✅ ENCERRAR CORRIDA (antigas/incompletas)
+async function finishChallenge(id){
+  const u = auth.currentUser;
+  if (!u) return openModal("Login", `<p class="muted">Entre com Google.</p>`);
+
+  const ref = db.collection("challenges").doc(id);
+
+  try{
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new Error("Desafio não existe.");
+      const c = snap.data();
+
+      const isCreator = c.createdByUid === u.uid;
+      const isAccepter = c.acceptedByUid === u.uid;
+      if (!isCreator && !isAccepter) throw new Error("Você não participa desse desafio.");
+
+      if (c.status === "finished" || c.status === "canceled") return;
+
+      tx.update(ref, {
+        status: "finished",
+        finishedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        winnerUid: null,
+        winnerName: "Encerrado manualmente"
+      });
+    });
+
+    openModal("Encerrado ✅", `<p class="muted">Corrida finalizada manualmente.</p>`);
+  }catch(e){
+    openModal("Erro", `<p class="muted">${escapeHtml(e?.message || String(e))}</p>`);
+  }
+}
+
 // ✅ CHEGADA AUTOMÁTICA (100m)
+const arrivingNow = new Set();
+
 async function arriveAuto(id, myLoc){
   const u = auth.currentUser;
   if (!u) return;
@@ -942,6 +880,7 @@ async function arriveAuto(id, myLoc){
       const snap = await tx.get(ref);
       if (!snap.exists) throw new Error("Desafio não existe.");
       const c = snap.data();
+
       if (c.status !== "racing") return;
 
       const isCreator = c.createdByUid === u.uid;
@@ -952,7 +891,8 @@ async function arriveAuto(id, myLoc){
       if (isAccepter && c.arrivedAccepterAt) return;
 
       const dest = { lat:Number(c.destinationLat), lng:Number(c.destinationLng) };
-      if (!withinRadius(myLoc, dest, 100)) return;
+      const ok = withinRadius(myLoc, dest, 100);
+      if (!ok) return;
 
       const updates = {};
       if (isCreator) updates.arrivedCreatorAt = firebase.firestore.FieldValue.serverTimestamp();
@@ -962,6 +902,8 @@ async function arriveAuto(id, myLoc){
     });
 
     await tryFinish(id);
+
+    openModal("Chegou! ✅", `<p class="muted">Você entrou no raio de <b>100m</b>. Chegada registrada automaticamente.</p>`);
   }catch(e){
     console.log("arriveAuto error:", e);
   }finally{
@@ -1010,9 +952,22 @@ async function tryFinish(id){
       finishedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
   });
+
+  try{
+    const snap = await db.collection("challenges").doc(id).get();
+    if (snap.exists){
+      const c = snap.data();
+      if (c?.status === "finished"){
+        openModal("Resultado 🏆", `
+          <p class="muted">Vencedor: <b>${escapeHtml(c.winnerName || "—")}</b></p>
+          <p class="muted">Aposta: <b>${Number(c.stakePoints||0)} pts</b></p>
+        `);
+      }
+    }
+  }catch(e){}
 }
 
-// ✅ checa TODOS desafios correndo que eu participo
+// ✅ checa desafios correndo que eu participo
 async function autoArriveCheckAll(){
   const u = auth.currentUser;
   if (!u || !lastLocation) return;
@@ -1020,7 +975,7 @@ async function autoArriveCheckAll(){
   try{
     const snap = await db.collection("challenges")
       .orderBy("createdAt", "desc")
-      .limit(30)
+      .limit(40)
       .get();
 
     const docs = snap.docs.map(d => ({ id:d.id, ...d.data() }));
@@ -1044,7 +999,7 @@ async function autoArriveCheckAll(){
 }
 
 // =================== PROFILE FORM ===================
-if (profileForm) {
+if (profileForm){
   profileForm.onsubmit = async (e) => {
     e.preventDefault();
     const profile = { name: (nameInput?.value || "").trim(), phone: (phoneInput?.value || "").trim() };
@@ -1065,7 +1020,7 @@ if (profileForm) {
   };
 }
 
-if (btnClear) {
+if (btnClear){
   btnClear.onclick = async () => {
     localStorage.removeItem("motoraser_profile");
     setFormFromProfile({ name:"", phone:"" });
@@ -1209,41 +1164,6 @@ async function presenceSetOffline(){
     }, { merge: true });
   }catch(e){}
 }
-async function finishChallenge(id){
-  const u = auth.currentUser;
-  if (!u) return;
-
-  const ref = db.collection("challenges").doc(id);
-
-  try{
-    await db.runTransaction(async (tx) => {
-      const snap = await tx.get(ref);
-      if (!snap.exists) throw new Error("Desafio não existe.");
-
-      const c = snap.data();
-
-      const isCreator = c.createdByUid === u.uid;
-      const isAccepter = c.acceptedByUid === u.uid;
-
-      if (!isCreator && !isAccepter)
-        throw new Error("Você não participa dessa corrida.");
-
-      tx.update(ref, {
-        status: "finished",
-        finishedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        winnerUid: null,
-        winnerName: "Encerrado manualmente"
-      });
-    });
-
-    openModal("Corrida encerrada", `
-      <p class="muted">A corrida foi finalizada manualmente.</p>
-    `);
-
-  }catch(e){
-    openModal("Erro", `<p class="muted">${e.message}</p>`);
-  }
-}
 
 function presenceStart(){
   presenceStop();
@@ -1304,14 +1224,14 @@ function presenceListen(){
     });
 }
 
-// =================== AUTH STATE (ÚNICO) ===================
+// =================== AUTH STATE ===================
 auth.onAuthStateChanged(async (user) => {
   if (user) {
     autoStartLocation();
 
     if (btnLogin) btnLogin.classList.add("hidden");
     if (btnLogout) btnLogout.classList.remove("hidden");
-    safeText(userStatus, `Usuário: ${user.displayName || "Sem nome"}`);
+    if (userStatus) userStatus.textContent = `Usuário: ${user.displayName || "Sem nome"}`;
 
     try{
       await db.collection("users").doc(user.uid).set({
@@ -1337,11 +1257,12 @@ auth.onAuthStateChanged(async (user) => {
   } else {
     if (btnLogin) btnLogin.classList.remove("hidden");
     if (btnLogout) btnLogout.classList.add("hidden");
-    safeText(userStatus, "Usuário: visitante");
-    setFormFromProfile(loadProfileLocal());
+    if (userStatus) userStatus.textContent = "Usuário: visitante";
 
+    setFormFromProfile(loadProfileLocal());
     presenceStop();
     stopChallengesListener();
+
     if (challengesEl) challengesEl.innerHTML = "";
   }
 });
