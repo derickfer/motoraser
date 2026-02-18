@@ -4,25 +4,21 @@ function updateRouteIfReady(){ /* fallback: evita crash antes da função real *
 async function updateRouteIfReady(){
   if (!lastLocation || !lastDest || !map) return;
 
-  try{
-    if (mapInfo) mapInfo.textContent = "Calculando rota...";
-    const r = await fetchRouteOSRM(lastLocation, lastDest);
-
-    clearRoute();
-
-    routeLayer = L.geoJSON(r.geometry, {
-      style: { weight: 5, opacity: 0.95, className: "route-neon" }
-    }).addTo(map);
-
-    const bounds = routeLayer.getBounds();
-    if (bounds && bounds.isValid()) map.fitBounds(bounds.pad(0.2));
-
-    const km = (r.distance / 1000).toFixed(2);
-    const min = Math.max(1, Math.round(r.duration / 60));
-    if (mapInfo) mapInfo.textContent = `Rota: ${km} km • ~${min} min ✅`;
-  }catch(e){
-    if (mapInfo) mapInfo.textContent = "Rota indisponível (ok para demo).";
+  if (routeLayer){
+    map.removeLayer(routeLayer);
+    routeLayer = null;
   }
+
+  const url = `https://router.project-osrm.org/route/v1/driving/${lastLocation.lng},${lastLocation.lat};${lastDest.lng},${lastDest.lat}?overview=full&geometries=geojson`;
+
+  const res = await fetch(url);
+  const data = await res.json();
+
+  if (!data.routes?.length) return;
+
+  routeLayer = L.geoJSON(data.routes[0].geometry, {
+    style: { color: "#00e5ff", weight: 5 }
+  }).addTo(map);
 }
 
 function updateRouteIfReady(){ /* noop */ }
