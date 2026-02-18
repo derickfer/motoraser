@@ -97,9 +97,10 @@ async function loadUserDoc(uid){
   return snap.exists ? (snap.data() || {}) : null;
 }
 
-// =================== MAP (Leaflet) ===================
-let map, meMarker, destMarker;
-let lastLocation = null;
+// ✅ estados globais que estavam faltando
+let lastDest = null;        // {lat, lng}
+let lastDestName = "";      // texto do destino
+let routeLayer = null;      // camada da rota (geoJSON)
 
 // ====== SETA / DIREÇÃO ======
 let meHeadingDeg = 0;             // ângulo atual (graus)
